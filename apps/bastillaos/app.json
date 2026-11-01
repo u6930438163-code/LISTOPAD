@@ -6,11 +6,7 @@
   "author": "Astyria, Aurelius, Alex & Operator",
   "description": "Instalowalna dystrybucja Debian Stable KDE z integracją modułów SVL Kernel.",
   "entry": "index.html",
-  "status": "running",
+  "status": "ready",
   "created_at": "2026-10-19T19:56:00Z",
-  "files": [
-    "README.md",
-    "app.json",
-    "index.html"
-  ]
+  "files": ["README.md", "app.json", "index.html"]
 }

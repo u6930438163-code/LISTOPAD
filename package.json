@@ -52,21 +52,5 @@
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"
-  },
-  "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "test": "tests"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/u6930438163-code/AI_Studio_BastillaOS.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/u6930438163-code/AI_Studio_BastillaOS/issues"
-  },
-  "homepage": "https://github.com/u6930438163-code/AI_Studio_BastillaOS#readme"
+  }
 }
