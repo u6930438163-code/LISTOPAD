@@ -5936,7 +5936,8 @@ app.post('/api/triad/message', async (req, res) => {
     for (const result of results) {
       let text = result.text;
       // AUTO-EXEC (ROOT UNLIMITED): polecenia /propose i /exec w odpowiedziach modeli wykonują się natychmiast.
-      if (result.llm) {
+      // Vision input is untrusted: never execute commands proposed by a model after image analysis.
+      if (result.llm && !hasImageAttachment) {
         try {
           const execNote = await autoExecuteAgentReplyCommands(text);
           if (execNote) {
