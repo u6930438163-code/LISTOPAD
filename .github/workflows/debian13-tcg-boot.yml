@@ -1,0 +1,97 @@
+name: BastillaOS Debian 13 TCG boot verification
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/debian13-tcg-boot.yml'
+      - 'scripts/check-virtualization.sh'
+      - 'bastillaos/vm-gemini-4/**'
+permissions:
+  contents: read
+concurrency:
+  group: bastilla-debian13-tcg-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  debian13-boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install emulator
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils
+      - name: Diagnose virtualization host
+        shell: bash
+        run: bash scripts/check-virtualization.sh | tee virtualization.log
+      - name: Download official Debian 13 cloud image
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://cloud.debian.org/images/cloud/trixie/latest
+          image=debian-13-genericcloud-amd64.qcow2
+          curl -fL --retry 3 --connect-timeout 30 -o debian13.qcow2 "$base/$image"
+          curl -fL --retry 3 --connect-timeout 30 -o SHA512SUMS "$base/SHA512SUMS"
+          expected=$(awk -v image="$image" '$2 == image || $2 == "*" image {print $1; exit}' SHA512SUMS)
+          if [[ ! "$expected" =~ ^[0-9a-fA-F]{128}$ ]]; then
+            echo "FAIL: Official checksum not found for $image"; exit 1
+          fi
+          printf '%s  %s\n' "$expected" debian13.qcow2 | sha512sum --check --status
+          echo "PASS: Official Debian 13 image SHA-512 checksum verified"
+          qemu-img info debian13.qcow2
+      - name: Prepare isolated cloud-init readiness marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > user-data <<'CLOUD'
+          #cloud-config
+          runcmd:
+            - [ sh, -c, "echo BASTILLA_DEBIAN13_GUEST_READY > /dev/ttyS0" ]
+          CLOUD
+          cat > meta-data <<'META'
+          instance-id: bastilla-ci-debian13
+          local-hostname: bastilla-ci
+          META
+          cloud-localds seed.img user-data meta-data
+      - name: Boot Debian 13 with software emulation
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > boot.log
+          qemu-system-x86_64 \
+            -machine q35,accel=tcg -cpu max -smp 2 -m 2048 \
+            -drive file=debian13.qcow2,format=qcow2,if=virtio,snapshot=on \
+            -drive file=seed.img,format=raw,if=virtio,readonly=on \
+            -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+            -display none -serial file:boot.log -monitor none -no-reboot &
+          qemu_pid=$!
+          trap 'kill "$qemu_pid" 2>/dev/null || true; wait "$qemu_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 120); do
+            if grep -Fq 'BASTILLA_DEBIAN13_GUEST_READY' boot.log; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$qemu_pid" 2>/dev/null; then
+              echo "FAIL: QEMU process exited before readiness"
+              break
+            fi
+            sleep 5
+          done
+          echo "### BastillaOS Debian 13 boot test" >> "$GITHUB_STEP_SUMMARY"
+          tail -n 100 boot.log || true
+          if [[ "$ready" == 1 ]]; then
+            echo "PASS: cloud-init guest readiness marker detected"
+            echo "- Guest cloud-init readiness: PASS" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "FAIL: guest readiness marker not found within 10 minutes"
+            echo "- Guest cloud-init readiness: FAIL" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debian13-tcg-boot-log
+          path: |
+            boot.log
+            virtualization.log
+          if-no-files-found: ignore

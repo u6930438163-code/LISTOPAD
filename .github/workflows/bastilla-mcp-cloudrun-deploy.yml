@@ -1,0 +1,52 @@
+name: Deploy BastillaOS MCP to Cloud Run (private)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: cloudrun
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate required configuration
+        shell: bash
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          API_URL: ${{ vars.BASTILLA_PUBLIC_API_URL }}
+        run: |
+          set -euo pipefail
+          for key in PROJECT_ID WIF_PROVIDER SERVICE_ACCOUNT API_URL; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing GitHub environment variable: $key"
+              exit 1
+            fi
+          done
+          case "$API_URL" in https://*) ;; *) echo "::error::API_URL must use HTTPS"; exit 1;; esac
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and publish image
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="europe-west2-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/bastilla/bastilla-mcp:${{ github.sha }}"
+          gcloud builds submit --project="${{ vars.GCP_PROJECT_ID }}" --config=integrations/mcp/cloudbuild.yaml --substitutions="_IMAGE=$IMAGE" .
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Deploy private Cloud Run service
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run deploy bastilla-mcp \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region=europe-west2 \
+            --image="$IMAGE" \
+            --no-allow-unauthenticated \
+            --set-env-vars="BASTILLA_API_URL=${{ vars.BASTILLA_PUBLIC_API_URL }}" \
+            --quiet
+          echo "Deployed as private IAM-protected Cloud Run service; ChatGPT OAuth is not configured." >> "$GITHUB_STEP_SUMMARY"

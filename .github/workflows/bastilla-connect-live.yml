@@ -1,0 +1,48 @@
+name: BastillaOS live API connectivity
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bastilla-connect-live.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Cloud Run deployment to verify'
+        required: false
+        type: choice
+        options:
+          - dev
+          - pre
+permissions:
+  contents: read
+jobs:
+  live-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [dev, pre]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected deployment API
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            dev) url="https://ais-dev-wcohfbaczr2ohtvwiuxtdt-873947482948.europe-west2.run.app" ;;
+            pre) url="https://ais-pre-wcohfbaczr2ohtvwiuxtdt-873947482948.europe-west2.run.app" ;;
+            *) exit 2 ;;
+          esac
+          echo "### Live API check ($TARGET)" >> "$GITHUB_STEP_SUMMARY"
+          if ! getent ahosts "${url#https://}" >/dev/null; then
+            echo 'DNS: FAILED' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'DNS: PASS' >> "$GITHUB_STEP_SUMMARY"
+          BASTILLA_PUBLIC_API_URL="$url" python3 packaging/bastilla-connect/connect.py
+          echo 'API endpoints: PASS (does not prove MCP handshake or live agent inference)' >> "$GITHUB_STEP_SUMMARY"

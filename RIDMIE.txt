@@ -1,0 +1,33 @@
+RIDMIE — BastillaOS
+===================
+
+Repozytorium: u6930438163-code/AI_Studio_BastillaOS
+Gałąź główna: main
+
+BastillaOS to aplikacja webowa oparta na jądrze SVL, z interfejsem React/Vite i serwerem Node.js/Express.
+
+Główne elementy projektu:
+- interfejs BastillaOS;
+- agenci AI (Alex, Astyria, Aria, Aurelius);
+- integracje modeli lokalnych Ollama i opcjonalnych dostawców chmurowych;
+- diagnostyka systemu i komendy agentów;
+- eksperymentalna konfiguracja maszyny Debian 13 przez QEMU/KVM.
+
+Uruchomienie w środowisku deweloperskim:
+1. Zainstaluj Node.js 22+, npm i wymagane zależności.
+2. Wykonaj: npm ci
+3. Skopiuj .env.example do .env i skonfiguruj sekrety poza repozytorium.
+4. Uruchom: npm run dev
+
+Kontrola jakości:
+- npm run lint
+- npm test
+- npm run build
+
+Uwagi:
+- Status synchronizacji GitHub ↔ Google AI Studio nie potwierdza działania serwera ani maszyny wirtualnej.
+- QEMU/KVM wymaga odpowiedniego hosta i dostępu do wirtualizacji.
+- Nie zapisuj kluczy API, haseł ani dysków VM w publicznym repozytorium.
+- Szczegółowe informacje znajdują się w README.md.
+
+Plik informacyjny RIDMIE.txt. Nie zastępuje README.md.

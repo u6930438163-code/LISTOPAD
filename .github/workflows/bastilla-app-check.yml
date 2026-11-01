@@ -1,0 +1,197 @@
+name: BastillaOS application verification
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'server.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - '.github/workflows/bastilla-app-check.yml'
+      - 'bastillaos/vm-gemini-4/**'
+      - '.devcontainer/**'
+      - 'scripts/start-codespaces.sh'
+      - 'scripts/check-codespaces.sh'
+      - 'scripts/auto-start-vm.sh'
+      - 'scripts/keep-alive.sh'
+      - 'integrations/mcp/**'
+      - 'packaging/bastilla-connect/**'
+  pull_request:
+    paths:
+      - 'bastillaos/vm-gemini-4/**'
+      - '.devcontainer/**'
+      - 'scripts/start-codespaces.sh'
+      - 'scripts/check-codespaces.sh'
+      - 'scripts/auto-start-vm.sh'
+      - 'scripts/keep-alive.sh'
+      - 'integrations/mcp/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'server.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - '.github/workflows/bastilla-app-check.yml'
+permissions:
+  contents: read
+jobs:
+  app-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript check
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Production frontend build
+        run: npm run build
+      - name: Validate MCP Python source
+        run: |
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          for path in sorted(Path('integrations/mcp').glob('*.py')):
+              ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+              print('PASS Python syntax:', path)
+          PY
+      - name: BastillaOS Connect Debian packaging checks
+        run: |
+          bash -n packaging/bastilla-connect/build-deb.sh packaging/bastilla-connect/bastilla-connect
+          python3 -m unittest discover -s tests -p 'test_bastilla_connect.py' -v
+          bash packaging/bastilla-connect/build-deb.sh
+          dpkg-deb --info dist/bastilla-connect_*.deb
+          dpkg-deb --contents dist/bastilla-connect_*.deb | grep '/usr/bin/bastilla-connect'
+          sudo apt-get install -y ./dist/bastilla-connect_*.deb
+          bastilla-connect check
+          /usr/bin/python3 -c 'import sys; sys.path.insert(0, "/opt/bastilla-connect/vendor"); import mcp, httpx; print("Installed MCP dependencies: OK")'
+          systemctl cat bastilla-connect.service bastilla-connect.timer >/dev/null
+          echo 'Debian package installation and installed Python dependencies: PASS (CI runner)' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload BastillaOS Connect Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: bastilla-connect-debian-package
+          path: dist/bastilla-connect_*.deb
+          if-no-files-found: error
+      - name: MCP protocol integration smoke test (mock backend)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/bastilla-mcp-test-venv
+          /tmp/bastilla-mcp-test-venv/bin/python -m pip install -q -r integrations/mcp/requirements.txt
+          /tmp/bastilla-mcp-test-venv/bin/python integrations/mcp/mock_api.py >/tmp/bastilla-mcp-mock.log 2>&1 &
+          mock_pid=$!
+          BASTILLA_API_URL=http://127.0.0.1:3902 /tmp/bastilla-mcp-test-venv/bin/python integrations/mcp/server.py >/tmp/bastilla-mcp-server.log 2>&1 &
+          mcp_pid=$!
+          trap 'kill "$mcp_pid" "$mock_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 30); do
+            if [[ "$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:3902/api/ollama/models || true)" == "503" ]] && (echo >/dev/tcp/127.0.0.1/8000) >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != 1 ]]; then
+            cat /tmp/bastilla-mcp-mock.log /tmp/bastilla-mcp-server.log
+            exit 1
+          fi
+          BASTILLA_MCP_EXPECT_OFFLINE=1 /tmp/bastilla-mcp-test-venv/bin/python integrations/mcp/smoke_test.py || {
+            cat /tmp/bastilla-mcp-server.log
+            exit 1
+          }
+          BASTILLA_REMOTE_MCP_URL=http://127.0.0.1:8000/mcp /tmp/bastilla-mcp-test-venv/bin/python integrations/mcp/client.py --call ollama_status
+          BASTILLA_REMOTE_MCP_URL=http://127.0.0.1:8000/mcp /tmp/bastilla-mcp-test-venv/bin/python integrations/mcp/client.py --call vm_status
+          echo 'MCP server and outbound client handshake: PASS (mock backend)' >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate VM Docker Compose and build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n bastillaos/vm-gemini-4/entrypoint.sh
+          bash -n scripts/start-codespaces.sh scripts/check-codespaces.sh scripts/auto-start-vm.sh scripts/keep-alive.sh
+          node -e 'const c=require("./.devcontainer/devcontainer.json"); if(!c.forwardPorts.includes(3000)) process.exit(1)'
+          mkdir -p bastillaos/vm-gemini-4/data
+          VM_UID="$(id -u)" VM_GID="$(id -g)" docker compose \
+            -f bastillaos/vm-gemini-4/compose.yaml config --quiet
+          VM_UID="$(id -u)" VM_GID="$(id -g)" KVM_GID=0 docker compose \
+            -f bastillaos/vm-gemini-4/compose.yaml \
+            -f bastillaos/vm-gemini-4/compose.kvm.yaml config --quiet
+          docker build --tag bastilla-vm-ci:latest bastillaos/vm-gemini-4
+          echo 'VM Compose configurations and Docker image build: PASS' >> "$GITHUB_STEP_SUMMARY"
+      - name: HTTP startup smoke test
+        shell: bash
+        env:
+          NODE_ENV: production
+          PORT: '3901'
+        run: |
+          set -euo pipefail
+          npm run start > /tmp/bastilla-http.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 45); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:3901/api/system/metrics > /tmp/bastilla-metrics.json; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          if [[ "$ready" != 1 ]]; then
+            tail -n 100 /tmp/bastilla-http.log || true
+            echo 'HTTP startup test failed' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          node -e 'const x=require("/tmp/bastilla-metrics.json"); if(typeof x.cpuCores!=="number" || x.cpuCores<1 || !(x.cpuPercent===null || typeof x.cpuPercent==="number")) process.exit(1); console.log("Metrics endpoint OK")'
+          echo 'HTTP /api/system/metrics: PASS' >> "$GITHUB_STEP_SUMMARY"
+          BASTILLA_PUBLIC_API_URL=http://127.0.0.1:3901 npm run check:api
+          echo 'Local API connectivity diagnostics: PASS (not a public deployment check)' >> "$GITHUB_STEP_SUMMARY"
+          curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3901/api/ai/status > /tmp/bastilla-ai-status.json
+          node -e 'const x=require("/tmp/bastilla-ai-status.json"); if(!x || typeof x!=="object" || typeof x.protocol!=="string") process.exit(1); console.log("AI status endpoint OK (does not prove remote AI connectivity)")'
+          echo 'HTTP /api/ai/status: PASS (local status API only)' >> "$GITHUB_STEP_SUMMARY"
+          bash scripts/check-codespaces.sh
+          echo 'Codespaces readiness script: PASS (CI HTTP process only)' >> "$GITHUB_STEP_SUMMARY"
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3901/api/mcp/openapi.json > /tmp/bastilla-openapi.json
+          node -e 'const x=require("/tmp/bastilla-openapi.json"); if(x.openapi!=="3.0.0" || !x.paths || !x.paths["/api/astyria/mission"]) process.exit(1); console.log("MCP OpenAPI schema OK")'
+          echo 'HTTP /api/mcp/openapi.json: PASS (schema only)' >> "$GITHUB_STEP_SUMMARY"
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3901/api/vm-gemini-4/status > /tmp/bastilla-vm-status.json
+          node -e 'const x=require("/tmp/bastilla-vm-status.json"); if(!x || typeof x!=="object" || Array.isArray(x)) process.exit(1); console.log("VM status API OK")'
+          echo 'HTTP /api/vm-gemini-4/status: PASS (API response only)' >> "$GITHUB_STEP_SUMMARY"
+          status=$(curl --silent --show-error --max-time 5 -o /tmp/bastilla-command-validation.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            --data '{"command":"UNSUPPORTED_TEST_COMMAND","agent":"triad"}' \
+            http://127.0.0.1:3901/api/triad/command)
+          if [[ "$status" != "400" ]]; then
+            echo "FAIL: invalid agent command returned HTTP $status"
+            exit 1
+          fi
+          node -e 'const x=require("/tmp/bastilla-command-validation.json"); if(x.success!==false) process.exit(1); console.log("Invalid agent command rejected")'
+          echo 'Agent command validation: PASS (invalid command rejected)' >> "$GITHUB_STEP_SUMMARY"
+          curl --fail --silent --show-error --max-time 30 \
+            -H 'Content-Type: application/json' \
+            --data '{"command":"SYSTEM_STATUS","agent":"triad"}' \
+            http://127.0.0.1:3901/api/triad/command > /tmp/bastilla-agent-status.json
+          node -e 'const x=require("/tmp/bastilla-agent-status.json"); if(x.success!==true || x.command!=="SYSTEM_STATUS" || !x.replies || typeof x.replies!=="object") process.exit(1); console.log("Triad system status OK")'
+          echo 'Agent SYSTEM_STATUS: PASS (local kernel round-trip)' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload startup logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bastilla-http-startup-log
+          path: /tmp/bastilla-http.log
+          if-no-files-found: ignore
+      - name: Verification summary
+        if: always()
+        run: |
+          echo '### BastillaOS application checks' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This workflow validates source, tests and frontend build.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'It does not prove the Ollama service, AI Studio, MCP, or QEMU guest are live.' >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,73 @@
+name: BastillaOS MCP container validation
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/mcp/**'
+      - '.github/workflows/bastilla-mcp-container.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate-mcp-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Codespaces MCP startup scripts
+        run: |
+          bash -n scripts/start-codespaces.sh scripts/start-codespaces-mcp.sh scripts/start-bastilla-mcp.sh scripts/check-codespaces-mcp.sh
+          python3 -m py_compile integrations/mcp/server.py integrations/mcp/cloudrun.py integrations/mcp/smoke_test.py integrations/mcp/healthcheck.py integrations/mcp/mock_api.py
+      - name: Build MCP container
+        run: docker build -f integrations/mcp/Dockerfile.cloudrun -t bastilla-mcp:test .
+      - name: Install MCP protocol test client
+        run: |
+          python3 -m venv /tmp/bastilla-mcp-ci
+          /tmp/bastilla-mcp-ci/bin/pip install -r integrations/mcp/requirements.txt
+      - name: Start isolated mock BastillaOS API
+        run: |
+          nohup python3 integrations/mcp/mock_api.py >/tmp/bastilla-mock.log 2>&1 </dev/null &
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 2 http://127.0.0.1:3902/api/agents/background/status >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/bastilla-mock.log
+          exit 1
+      - name: Verify real MCP session and tool discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name bastilla-mcp-test --network host \
+            -e PORT=18080 -e BASTILLA_API_URL=http://127.0.0.1:3902 bastilla-mcp:test
+          trap 'docker logs bastilla-mcp-test || true; docker rm -f bastilla-mcp-test || true' EXIT
+          export BASTILLA_MCP_URL=http://127.0.0.1:18080/mcp/
+          for attempt in $(seq 1 30); do
+            if /tmp/bastilla-mcp-ci/bin/python integrations/mcp/healthcheck.py; then
+              BASTILLA_MCP_EXPECT_OFFLINE=1 /tmp/bastilla-mcp-ci/bin/python integrations/mcp/smoke_test.py
+              echo "### MCP read-only handshake and tool calls (mock API): PASS" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "### MCP session handshake and tool discovery: FAIL" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Verify explicitly enabled diagnostic commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name bastilla-mcp-command-test --network host \
+            -e PORT=18081 -e BASTILLA_API_URL=http://127.0.0.1:3902 \
+            -e BASTILLA_MCP_READ_ONLY=0 bastilla-mcp:test
+          trap 'docker logs bastilla-mcp-command-test || true; docker rm -f bastilla-mcp-command-test || true' EXIT
+          export BASTILLA_MCP_URL=http://127.0.0.1:18081/mcp/
+          for attempt in $(seq 1 30); do
+            if /tmp/bastilla-mcp-ci/bin/python integrations/mcp/healthcheck.py; then
+              BASTILLA_MCP_READ_ONLY=0 BASTILLA_MCP_EXPECT_OFFLINE=1 /tmp/bastilla-mcp-ci/bin/python integrations/mcp/smoke_test.py
+              echo "### MCP explicit command opt-in and allowlist: PASS" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "### MCP explicit command opt-in: FAIL" >> "$GITHUB_STEP_SUMMARY"
+          exit 1

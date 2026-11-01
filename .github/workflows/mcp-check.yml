@@ -1,0 +1,55 @@
+name: MCP bridge checks
+
+on:
+  push:
+    paths:
+      - 'integrations/mcp/**'
+      - '.github/workflows/mcp-check.yml'
+      - 'scripts/start-bastilla-mcp.sh'
+      - 'package.json'
+  pull_request:
+    paths:
+      - 'integrations/mcp/**'
+      - '.github/workflows/mcp-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install bridge dependencies
+        run: python -m pip install -r integrations/mcp/requirements.txt
+      - name: Check startup shell syntax
+        run: bash -n scripts/start-bastilla-mcp.sh
+      - name: Compile bridge and smoke test
+        run: python -m compileall -q integrations/mcp
+      - name: Test MCP handshake and mocked BastillaOS API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python integrations/mcp/mock_api.py &
+          api_pid=$!
+          BASTILLA_API_URL=http://127.0.0.1:3902 BASTILLA_MCP_READ_ONLY=1 python integrations/mcp/server.py &
+          mcp_pid=$!
+          trap 'kill "$api_pid" "$mcp_pid" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import socket, time
+          for port in (3902, 8000):
+              for attempt in range(50):
+                  try:
+                      with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                          break
+                  except OSError:
+                      time.sleep(0.2)
+              else:
+                  raise SystemExit(f"Port {port} did not start")
+          PY
+          BASTILLA_MCP_EXPECT_OFFLINE=1 python integrations/mcp/smoke_test.py

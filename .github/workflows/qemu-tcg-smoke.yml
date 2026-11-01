@@ -1,0 +1,29 @@
+name: BastillaOS QEMU TCG smoke test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/launch-qemu-tcg.sh'
+      - '.github/workflows/qemu-tcg-smoke.yml'
+jobs:
+  qemu-tcg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install QEMU
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 qemu-utils
+      - name: Validate launcher
+        run: bash -n scripts/launch-qemu-tcg.sh
+      - name: Check TCG initialization without KVM
+        shell: bash
+        run: |
+          set +e
+          timeout 5s qemu-system-x86_64 -machine q35,accel=tcg -cpu max -m 256 -smp 1 -display none -serial none -monitor none -S
+          code=$?
+          if [ "$code" -eq 124 ]; then
+            echo "QEMU TCG initialized and stayed running for 5 seconds"
+            exit 0
+          fi
+          echo "Unexpected QEMU exit code: $code"
+          exit 1
