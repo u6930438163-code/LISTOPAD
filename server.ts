@@ -5147,7 +5147,7 @@ async function generateOpenRouterChatReply(
           file_data: `data:${attachment.mimeType};base64,${attachment.content}`,
         },
       });
-    } else if (attachment.mimeType === 'image/jpeg') {
+    } else if ((attachment.mimeType === 'image/jpeg' || attachment.mimeType === 'image/png')) {
       userContent.push({
         type: 'image_url',
         image_url: { url: `data:${attachment.mimeType};base64,${attachment.content}` },
