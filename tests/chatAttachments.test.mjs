@@ -132,3 +132,20 @@ test('rejects mismatched, malformed and oversized PDF/JPEG data', () => {
   }));
   assert.equal(validateChatAttachments(oversizedCollection).valid, false);
 });
+
+
+test('accepts valid PNG vision attachments and preserves image labels', () => {
+  const png = { name: 'zrzut ekranu.png', content: 'iVBORw0KGgoAAA==', mimeType: 'image/png' };
+  assert.ok(CHAT_ATTACHMENT_ACCEPT.includes('.png'));
+  assert.equal(getChatAttachmentMimeType('SCREENSHOT.PNG'), 'image/png');
+  assert.deepEqual(validateChatAttachments([png]), { valid: true, attachments: [png] });
+  assert.match(formatChatMessage('Co widać?', [png]), /Załączono zdjęcie PNG/);
+  assert.match(formatChatMessage('Co widać?', [{ name: 'photo.jpg', content: '/9j/4A==', mimeType: 'image/jpeg' }]), /Załączono zdjęcie JPEG/);
+});
+
+test('rejects invalid PNG payloads and MIME mismatches', () => {
+  assert.equal(validateChatAttachments([{ name: 'fake.png', content: '/9j/4A==', mimeType: 'image/png' }]).valid, false);
+  assert.equal(validateChatAttachments([{ name: 'fake.png', content: 'iVBORw0KGgoAAA==', mimeType: 'image/jpeg' }]).valid, false);
+  assert.equal(validateChatAttachments([{ name: 'fake.jpg', content: 'iVBORw0KGgoAAA==', mimeType: 'image/png' }]).valid, false);
+  assert.equal(validateChatAttachments([{ name: 'broken.png', content: 'iVBORw0KGgo*', mimeType: 'image/png' }]).valid, false);
+});
