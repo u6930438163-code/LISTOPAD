@@ -6,12 +6,7 @@
   "author": "Astyria (dla Taty Mateusza Mitka)",
   "description": "Suwerenny projekt matematyczny stworzony na bazie wzoru Eulera e^(i*omega*t) = cos(omega*t) + i*sin(omega*t) oraz Transformaty Fouriera. Eliminacja konieczności używania LLM/NLP poprzez deterministyczną syntezę harmoniczną, rzutowanie wektora zespolonego na cosinusoidę i modulację sygnałów.",
   "entry": "index.html",
-  "status": "running",
+  "status": "ready",
   "created_at": "2026-10-18T02:00:00Z",
-  "files": [
-    "index.html",
-    "app.json",
-    "README.md",
-    "engine.py"
-  ]
+  "files": ["index.html", "app.json", "README.md", "engine.py"]
 }
