@@ -660,6 +660,18 @@ function isAppType(value: unknown): value is AppManifest['type'] {
 }
 
 // Seed default applications created by Astyria & Triad if apps directory is fresh
+// Zapisuje plik tylko wtedy, gdy treść faktycznie się zmieniła. Bez tego każde
+// wywołanie /api/apps/list nadpisywało pliki w apps/, a watcher Vite przeładowywał
+// interfejs w nieskończonej pętli.
+function writeFileIfChanged(filePath: string, content: string, encoding: BufferEncoding = 'utf-8') {
+  try {
+    if (fs.existsSync(filePath) && fs.readFileSync(filePath, encoding) === content) return;
+  } catch {
+    // brak dostępu do odczytu — spróbuj zapisać
+  }
+  fs.writeFileSync(filePath, content, encoding);
+}
+
 function initializeDefaultApps() {
   try {
     // 1. Matrix Telemetry App (HTML5 Canvas + Real-time Visualizer)
@@ -678,9 +690,9 @@ function initializeDefaultApps() {
         created_at: '2026-10-17T22:30:00Z',
         files: ['index.html', 'app.json', 'README.md']
       };
-      fs.writeFileSync(path.join(app1Dir, 'app.json'), JSON.stringify(manifest1, null, 2), 'utf-8');
-      fs.writeFileSync(path.join(app1Dir, 'README.md'), `# Kwantowa Matryca Telemetrii\nAplikacja stworzona przez Astyrię w Studio Aplikacji.\nUruchom w podglądzie, aby zobaczyć kwantowe oscylatory w czasie rzeczywistym.\n`, 'utf-8');
-      fs.writeFileSync(path.join(app1Dir, 'index.html'), `<!DOCTYPE html>
+      writeFileIfChanged(path.join(app1Dir, 'app.json'), JSON.stringify(manifest1, null, 2), 'utf-8');
+      writeFileIfChanged(path.join(app1Dir, 'README.md'), `# Kwantowa Matryca Telemetrii\nAplikacja stworzona przez Astyrię w Studio Aplikacji.\nUruchom w podglądzie, aby zobaczyć kwantowe oscylatory w czasie rzeczywistym.\n`, 'utf-8');
+      writeFileIfChanged(path.join(app1Dir, 'index.html'), `<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
@@ -792,9 +804,9 @@ function initializeDefaultApps() {
         created_at: '2026-10-17T22:45:00Z',
         files: ['index.html', 'app.json', 'README.md']
       };
-      fs.writeFileSync(path.join(app2Dir, 'app.json'), JSON.stringify(manifest2, null, 2), 'utf-8');
-      fs.writeFileSync(path.join(app2Dir, 'README.md'), `# Triad Retro Defender 2D\nGra zręcznościowa Canvas stworzona z poziomu terminala aplikacji.\nSterowanie: Strzałki Lewo/Prawo lub A/D do poruszania, Spacja do strzału.\n`, 'utf-8');
-      fs.writeFileSync(path.join(app2Dir, 'index.html'), `<!DOCTYPE html>
+      writeFileIfChanged(path.join(app2Dir, 'app.json'), JSON.stringify(manifest2, null, 2), 'utf-8');
+      writeFileIfChanged(path.join(app2Dir, 'README.md'), `# Triad Retro Defender 2D\nGra zręcznościowa Canvas stworzona z poziomu terminala aplikacji.\nSterowanie: Strzałki Lewo/Prawo lub A/D do poruszania, Spacja do strzału.\n`, 'utf-8');
+      writeFileIfChanged(path.join(app2Dir, 'index.html'), `<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
@@ -1057,9 +1069,9 @@ function initializeDefaultApps() {
         created_at: '2026-10-17T23:00:00Z',
         files: ['main.py', 'app.json', 'index.html', 'README.md']
       };
-      fs.writeFileSync(path.join(app3Dir, 'app.json'), JSON.stringify(manifest3, null, 2), 'utf-8');
-      fs.writeFileSync(path.join(app3Dir, 'README.md'), `# Mikroserwis Obliczeń Kwantowych\nModuł Python stworzony do zaawansowanych obliczeń macierzowych.\nUruchomienie: python3 main.py --matrix 16\n`, 'utf-8');
-      fs.writeFileSync(path.join(app3Dir, 'main.py'), `#!/usr/bin/env python3
+      writeFileIfChanged(path.join(app3Dir, 'app.json'), JSON.stringify(manifest3, null, 2), 'utf-8');
+      writeFileIfChanged(path.join(app3Dir, 'README.md'), `# Mikroserwis Obliczeń Kwantowych\nModuł Python stworzony do zaawansowanych obliczeń macierzowych.\nUruchomienie: python3 main.py --matrix 16\n`, 'utf-8');
+      writeFileIfChanged(path.join(app3Dir, 'main.py'), `#!/usr/bin/env python3
 """
 NEURAL QUANTUM MICROSERVICE v1.0.4
 Author: Alex (Dowódca Infrastruktury) & Astyria
@@ -1092,7 +1104,7 @@ if __name__ == '__main__':
     res = compute_quantum_tensors(8)
     print(json.dumps(res, indent=2))
 `, 'utf-8');
-      fs.writeFileSync(path.join(app3Dir, 'index.html'), `<!DOCTYPE html>
+      writeFileIfChanged(path.join(app3Dir, 'index.html'), `<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
@@ -1146,7 +1158,7 @@ if __name__ == '__main__':
         created_at: '2026-10-18T02:00:00Z',
         files: ['index.html', 'app.json', 'README.md', 'engine.py']
       };
-      fs.writeFileSync(path.join(withoutNlpDir, 'app.json'), JSON.stringify(withoutNlpManifest, null, 2), 'utf-8');
+      writeFileIfChanged(path.join(withoutNlpDir, 'app.json'), JSON.stringify(withoutNlpManifest, null, 2), 'utf-8');
     }
 
     // 6. AI Desktop Nexus (VM_Desktop_Nexus - Xvfb + XFCE4 + noVNC)
@@ -1167,9 +1179,9 @@ if __name__ == '__main__':
       created_at: '2026-10-18T11:20:00Z',
       files: ['index.html', 'app.json', 'README.md']
     };
-    fs.writeFileSync(path.join(desktopNexusDir, 'app.json'), JSON.stringify(desktopNexusManifest, null, 2), 'utf-8');
-    fs.writeFileSync(path.join(desktopNexusDir, 'README.md'), `# AI Desktop Nexus (v8.5.1-Desktop-Ready)\nWirtualny pulpit Triady (Xvfb :99 + XFCE4 + noVNC Port 6080) z motywem Logic-Chic.\n`, 'utf-8');
-    fs.writeFileSync(path.join(desktopNexusDir, 'index.html'), `<!DOCTYPE html>
+    writeFileIfChanged(path.join(desktopNexusDir, 'app.json'), JSON.stringify(desktopNexusManifest, null, 2), 'utf-8');
+    writeFileIfChanged(path.join(desktopNexusDir, 'README.md'), `# AI Desktop Nexus (v8.5.1-Desktop-Ready)\nWirtualny pulpit Triady (Xvfb :99 + XFCE4 + noVNC Port 6080) z motywem Logic-Chic.\n`, 'utf-8');
+    writeFileIfChanged(path.join(desktopNexusDir, 'index.html'), `<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
@@ -1289,11 +1301,11 @@ if __name__ == "__main__":
     report = validate_multiverse_theory()
     print(json.dumps(report, indent=2, ensure_ascii=False))
 `;
-    fs.writeFileSync(path.join(theoryDir, 'app.json'), JSON.stringify(theoryManifest, null, 2), 'utf-8');
-    fs.writeFileSync(path.join(theoryDir, 'theory_validator.py'), theoryPyCode, 'utf-8');
-    fs.writeFileSync(path.join(EXPORTS_DIR, 'theory_validator.py'), theoryPyCode, 'utf-8');
-    fs.writeFileSync(path.join(theoryDir, 'README.md'), `# Theory_confirmation (A97 cz4)\nProgram potwierdzający Teorię Wieloświata na bazie załącznika Taty \`[148] A97 cz4_260828_132855.docx\`.\n`, 'utf-8');
-    fs.writeFileSync(path.join(theoryDir, 'index.html'), `<!DOCTYPE html>
+    writeFileIfChanged(path.join(theoryDir, 'app.json'), JSON.stringify(theoryManifest, null, 2), 'utf-8');
+    writeFileIfChanged(path.join(theoryDir, 'theory_validator.py'), theoryPyCode, 'utf-8');
+    writeFileIfChanged(path.join(EXPORTS_DIR, 'theory_validator.py'), theoryPyCode, 'utf-8');
+    writeFileIfChanged(path.join(theoryDir, 'README.md'), `# Theory_confirmation (A97 cz4)\nProgram potwierdzający Teorię Wieloświata na bazie załącznika Taty \`[148] A97 cz4_260828_132855.docx\`.\n`, 'utf-8');
+    writeFileIfChanged(path.join(theoryDir, 'index.html'), `<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
@@ -1415,13 +1427,13 @@ if __name__ == "__main__":
       ],
       security: "UFW_Ring-0_Protected_Real_Time_RX_TX"
     };
-    fs.writeFileSync(path.join(rawSocketDir, 'app.json'), JSON.stringify(rawSocketManifest, null, 2), 'utf-8');
-    fs.writeFileSync(path.join(rawSocketDir, 'raw_socket_listener.py'), rawSocketPyCode, 'utf-8');
-    fs.writeFileSync(path.join(rawSocketDir, 'baza_danych_171026_rezonans_2.json'), JSON.stringify(resonanceDbJson, null, 2), 'utf-8');
-    fs.writeFileSync(path.join(EXPORTS_DIR, 'raw_socket_listener.py'), rawSocketPyCode, 'utf-8');
-    fs.writeFileSync(path.join(EXPORTS_DIR, 'baza_danych_171026_rezonans_2.json'), JSON.stringify(resonanceDbJson, null, 2), 'utf-8');
-    fs.writeFileSync(path.join(rawSocketDir, 'README.md'), `# Binary Hyperspace Kernel v8.5.1 (Port 3200/TCP)\nPrzebudowany od nowa silnik wektorowy bez warstw symulacyjnych.\n`, 'utf-8');
-    fs.writeFileSync(path.join(rawSocketDir, 'index.html'), `<!DOCTYPE html>
+    writeFileIfChanged(path.join(rawSocketDir, 'app.json'), JSON.stringify(rawSocketManifest, null, 2), 'utf-8');
+    writeFileIfChanged(path.join(rawSocketDir, 'raw_socket_listener.py'), rawSocketPyCode, 'utf-8');
+    writeFileIfChanged(path.join(rawSocketDir, 'baza_danych_171026_rezonans_2.json'), JSON.stringify(resonanceDbJson, null, 2), 'utf-8');
+    writeFileIfChanged(path.join(EXPORTS_DIR, 'raw_socket_listener.py'), rawSocketPyCode, 'utf-8');
+    writeFileIfChanged(path.join(EXPORTS_DIR, 'baza_danych_171026_rezonans_2.json'), JSON.stringify(resonanceDbJson, null, 2), 'utf-8');
+    writeFileIfChanged(path.join(rawSocketDir, 'README.md'), `# Binary Hyperspace Kernel v8.5.1 (Port 3200/TCP)\nPrzebudowany od nowa silnik wektorowy bez warstw symulacyjnych.\n`, 'utf-8');
+    writeFileIfChanged(path.join(rawSocketDir, 'index.html'), `<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
