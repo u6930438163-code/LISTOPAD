@@ -1,5 +1,6 @@
 import express from 'express';
 import { registerGptActions } from './src/lib/gptActions.mjs';
+import { mcpAuthConfig, checkMcpAuth } from './src/lib/mcpAuth.mjs';
 import { sendChatError } from './src/lib/chatTransport.mjs';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
@@ -6123,16 +6124,46 @@ async function handleMcpToolCall(name: string, args: Record<string, any> = {}) {
   }
 }
 
-// MCP SSE endpoint
-app.get('/api/mcp/sse', (req, res) => {
+// --- MCP: autoryzacja + legacy SSE ---
+const MCP_AUTH = mcpAuthConfig();
+if (MCP_AUTH.configured) {
+  console.log('[MCP] Autoryzacja włączona (Bearer MCP_AUTH_TOKEN lub /api/mcp/<sekret>).');
+} else {
+  console.warn(`[MCP] Brak MCP_AUTH_TOKEN — serwer MCP ${MCP_AUTH.production ? 'WYŁĄCZONY w produkcji' : 'otwarty (tylko podgląd/dev)'}.`);
+}
+
+function mcpAuthGuard(req: express.Request, res: express.Response): boolean {
+  const result = checkMcpAuth({ authorization: req.get('Authorization'), secret: req.params?.secret }, MCP_AUTH);
+  if (!result.ok) {
+    res.status(result.status).json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: result.error } });
+    return false;
+  }
+  return true;
+}
+
+function setMcpCors(res: express.Response) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, MCP-Protocol-Version, Mcp-Session-Id');
+  res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
+}
+
+// Otwarte strumienie legacy SSE: sessionId -> odpowiedź HTTP strumienia.
+const mcpSseSessions = new Map<string, express.Response>();
+
+// MCP SSE endpoint (transport HTTP+SSE z wersji 2024-11-05)
+app.get(['/api/mcp/sse', '/api/mcp/:secret/sse'], (req, res) => {
+  setMcpCors(res);
+  if (!mcpAuthGuard(req, res)) return;
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders?.();
 
   const sessionId = randomUUID();
-  const endpoint = `/api/mcp?sessionId=${sessionId}`;
-  res.write(`event: endpoint\ndata: ${endpoint}\n\n`);
+  mcpSseSessions.set(sessionId, res);
+  const base = req.params?.secret ? `/api/mcp/${encodeURIComponent(req.params.secret)}` : '/api/mcp';
+  res.write(`event: endpoint\ndata: ${base}?sessionId=${sessionId}\n\n`);
 
   const keepAlive = setInterval(() => {
     res.write(': keepalive\n\n');
@@ -6140,6 +6171,7 @@ app.get('/api/mcp/sse', (req, res) => {
 
   req.on('close', () => {
     clearInterval(keepAlive);
+    mcpSseSessions.delete(sessionId);
   });
 });
 
@@ -6237,22 +6269,26 @@ app.get('/api/mcp/openapi.json', (req, res) => {
   });
 });
 
-// MCP JSON-RPC 2.0 endpoint (ChatGPT / Claude / Cursor MCP)
-app.all(['/api/mcp', '/mcp'], async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, MCP-Protocol-Version, Mcp-Session-Id');
+// MCP JSON-RPC 2.0 endpoint (Streamable HTTP, bezstanowy; ChatGPT / Claude / Cursor MCP)
+app.all(['/api/mcp', '/mcp', '/api/mcp/:secret', '/mcp/:secret'], async (req, res) => {
+  setMcpCors(res);
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
+  if (!mcpAuthGuard(req, res)) return;
 
   if (req.method === 'GET') {
-    const origin = `${req.protocol}://${req.get('host')}`;
+    // Bez nagłówka Accept: text/event-stream zwracamy opis serwera (diagnostyka w przeglądarce).
+    // Serwer nie otwiera strumienia GET dla Streamable HTTP — zgodnie ze specyfikacją 405.
+    if (String(req.get('Accept') || '').includes('text/event-stream')) {
+      return res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Strumień GET nie jest obsługiwany; użyj POST.' } });
+    }
     return res.json({
       name: 'bastillaos-astyria-mcp',
-      version: '1.0.0',
-      description: 'BastillaOS Astyria Model Context Protocol (MCP) Server dla ChatGPT i agentów AI',
+      version: '1.1.0',
+      description: 'BastillaOS Astyria Model Context Protocol (MCP) Server dla Claude, ChatGPT i agentów AI',
+      auth: MCP_AUTH.configured ? 'required' : 'open-dev',
       endpoints: {
         mcp: '/api/mcp',
         sse: '/api/mcp/sse',
@@ -6262,76 +6298,98 @@ app.all(['/api/mcp', '/mcp'], async (req, res) => {
     });
   }
 
-  const { jsonrpc, id, method, params } = req.body || {};
-  if (jsonrpc !== '2.0' || typeof method !== 'string') {
-    return res.status(400).json({ jsonrpc: '2.0', id: id ?? null, error: { code: -32600, message: 'Invalid Request: expected JSON-RPC 2.0' } });
+  if (req.method === 'DELETE') {
+    return res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Serwer bezstanowy — brak sesji do zamknięcia.' } });
   }
 
-  if (id === undefined) {
-    if (method.startsWith('notifications/')) return res.status(202).end();
-    return res.status(400).json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Request id required' } });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Metoda niedozwolona.' } });
   }
 
-  try {
-    switch (method) {
-      case 'initialize':
-        return res.json({
-          jsonrpc: '2.0',
-          id,
-          result: {
-            protocolVersion: ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'].includes(params?.protocolVersion) ? params.protocolVersion : '2025-03-26',
-            serverInfo: {
-              name: 'bastillaos-astyria-mcp',
-              version: '1.0.0',
-            },
+  // Legacy SSE: odpowiedź idzie do otwartego strumienia, POST dostaje 202.
+  const sseSessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : '';
+  const sseStream = sseSessionId ? mcpSseSessions.get(sseSessionId) : undefined;
+  if (sseSessionId && !sseStream) {
+    return res.status(404).json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Nieznana lub zamknięta sesja SSE.' } });
+  }
+  const reply = (status: number, body: any) => {
+    if (sseStream) {
+      sseStream.write(`event: message\ndata: ${JSON.stringify(body)}\n\n`);
+      return res.status(202).end();
+    }
+    return res.status(status).json(body);
+  };
+
+  const handleOne = async (msg: any): Promise<{ status: number; body: any } | null> => {
+    const { jsonrpc, id, method, params } = msg || {};
+    if (jsonrpc !== '2.0' || typeof method !== 'string') {
+      // Odpowiedzi klienta (np. na ping serwera) nie mają pola method — ignorujemy je.
+      if (jsonrpc === '2.0' && id !== undefined && ('result' in (msg || {}) || 'error' in (msg || {}))) return null;
+      return { status: 400, body: { jsonrpc: '2.0', id: id ?? null, error: { code: -32600, message: 'Invalid Request: expected JSON-RPC 2.0' } } };
+    }
+    if (id === undefined || id === null) {
+      // Powiadomienia (notifications/*) nie dostają odpowiedzi.
+      return null;
+    }
+    const ok = (result: any) => ({ status: 200, body: { jsonrpc: '2.0', id, result } });
+    const fail = (code: number, message: string) => ({ status: 200, body: { jsonrpc: '2.0', id, error: { code, message } } });
+    try {
+      switch (method) {
+        case 'initialize':
+          return ok({
+            protocolVersion: ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'].includes(params?.protocolVersion) ? params.protocolVersion : '2025-06-18',
+            serverInfo: { name: 'bastillaos-astyria-mcp', version: '1.1.0' },
             capabilities: {
               tools: { listChanged: false },
               resources: { listChanged: false },
               prompts: { listChanged: false },
             },
-          },
-        });
-      case 'notifications/initialized':
-      case 'initialized':
-        return res.json({ jsonrpc: '2.0', id: id ?? null, result: {} });
-      case 'ping':
-        return res.json({ jsonrpc: '2.0', id, result: {} });
-      case 'tools/list':
-        return res.json({
-          jsonrpc: '2.0',
-          id,
-          result: {
-            tools: MCP_TOOLS,
-          },
-        });
-      case 'tools/call': {
-        const toolName = params?.name;
-        const toolArguments = params?.arguments || {};
-        const callResult = await handleMcpToolCall(toolName, toolArguments);
-        return res.json({
-          jsonrpc: '2.0',
-          id,
-          result: callResult,
-        });
+            instructions: 'BastillaOS / SVL Kernel. Narzędzia: astyria_command, astyria_mission, kernel_status, chat_triad.',
+          });
+        case 'ping':
+          return ok({});
+        case 'tools/list':
+          return ok({ tools: MCP_TOOLS });
+        case 'tools/call': {
+          const toolName = params?.name;
+          if (typeof toolName !== 'string' || !MCP_TOOLS.some((t) => t.name === toolName)) {
+            return fail(-32602, `Nieznane narzędzie MCP: ${toolName}`);
+          }
+          try {
+            return ok(await handleMcpToolCall(toolName, params?.arguments || {}));
+          } catch (toolError: any) {
+            return ok({ content: [{ type: 'text', text: `Błąd narzędzia ${toolName}: ${toolError?.message || toolError}` }], isError: true });
+          }
+        }
+        case 'resources/list':
+          return ok({ resources: [] });
+        case 'resources/templates/list':
+          return ok({ resourceTemplates: [] });
+        case 'resources/read':
+          return fail(-32002, `Zasób nie istnieje: ${params?.uri ?? ''}`);
+        case 'prompts/list':
+          return ok({ prompts: [] });
+        case 'prompts/get':
+          return fail(-32602, `Prompt nie istnieje: ${params?.name ?? ''}`);
+        case 'logging/setLevel':
+          return ok({});
+        default:
+          return fail(-32601, `Method not found: ${method}`);
       }
-      case 'resources/list':
-        return res.json({ jsonrpc: '2.0', id, result: { resources: [] } });
-      case 'prompts/list':
-        return res.json({ jsonrpc: '2.0', id, result: { prompts: [] } });
-      default:
-        return res.status(404).json({
-          jsonrpc: '2.0',
-          id,
-          error: { code: -32601, message: `Method not found: ${method}` },
-        });
+    } catch (error: any) {
+      return { status: 500, body: { jsonrpc: '2.0', id, error: { code: -32603, message: `Internal error: ${error?.message || error}` } } };
     }
-  } catch (error: any) {
-    return res.status(500).json({
-      jsonrpc: '2.0',
-      id: id ?? null,
-      error: { code: -32603, message: `Internal error: ${error?.message || error}` },
-    });
+  };
+
+  const payload = req.body;
+  if (Array.isArray(payload)) {
+    const results = (await Promise.all(payload.map(handleOne))).filter(Boolean) as { status: number; body: any }[];
+    if (results.length === 0) return res.status(202).end();
+    return reply(200, results.map((r) => r.body));
   }
+  const result = await handleOne(payload);
+  if (!result) return res.status(202).end();
+  return reply(result.status, result.body);
 });
 
 // Legacy free-text chat is intentionally disabled.
