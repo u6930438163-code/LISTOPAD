@@ -17,3 +17,5 @@ bastillaos/vm-gemini-4/data/
 
 # Zdjęcia przesłane w czacie (prywatne dane użytkownika).
 data/chat-images/
+# Lokalne ustawienia swobodnej rozmowy agentów.
+data/agent-conversation.json

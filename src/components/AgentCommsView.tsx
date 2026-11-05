@@ -3,6 +3,7 @@ import { DataStore, OPERATOR_NAME } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS, AgentProfile } from '../kernel/agents';
 import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Paperclip, Send, X } from 'lucide-react';
 import { FormattedMessage } from './FormattedMessage';
+import { AgentConversationToggle } from './AgentConversationToggle';
 import {
   ASTYRIA_MISSION_ACTIONS,
   ASTYRIA_MISSION_LABELS,
@@ -241,6 +242,8 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           </div>
         </div>
 
+        <AgentConversationToggle />
+
         <button type="button" aria-expanded={showProtocolTools} onClick={() => setShowProtocolTools(!showProtocolTools)} className="shrink-0 border-b border-slate-800 px-3 py-2 text-left text-cyan-200 lg:hidden">{showProtocolTools ? 'Ukryj narzędzia protokołu i misji' : 'Narzędzia protokołu i misji'}</button>
         <div className={`${showProtocolTools ? 'block' : 'hidden'} shrink-0 max-h-[45dvh] overflow-y-auto lg:block lg:max-h-none`}>
         <div className="flex flex-wrap items-end gap-2 border-b border-slate-800 bg-slate-900/60 px-3 py-2">
@@ -381,7 +384,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                           : 'bg-slate-800 text-slate-300'
                       }`}
                     >
-                      {msg.agent}
+                      {msg.agent === 'si_1' ? 'Aria' : msg.agent}
                     </span>
                   </div>
 
