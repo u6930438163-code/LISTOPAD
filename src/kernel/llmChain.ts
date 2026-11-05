@@ -518,7 +518,17 @@ export function configuredProviders(config: LlmChainConfig): Array<LlmProvider> 
   return providers;
 }
 
-/** Gemini → xAI → Ollama. Rzuca LlmChainError, gdy żaden dostawca nie odpowiedział. */
+/**
+ * Keep the operator's chosen primary/secondary providers in their original
+ * order, but move Gemini to the very end for a genuine provider-level fallback.
+ * This does not enable Gemini without a configured GEMINI_API_KEY.
+ */
+export function preferGeminiAsFallback(providers: LlmProvider[], enabled = true): LlmProvider[] {
+  if (!enabled) return [...providers];
+  return [...providers.filter((provider) => provider !== 'gemini'), ...providers.filter((provider) => provider === 'gemini')];
+}
+
+/** Try providers in the configured order; throws LlmChainError when none succeeds. */
 export async function generateWithChain(
   config: LlmChainConfig,
   request: LlmRequest,
