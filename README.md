@@ -64,8 +64,55 @@ such as `gemma3:4b` (models without vision reject them with a clear error),
 while PDF input requires the optional Gemini provider.
 The deterministic command protocol works independently of Ollama.
 
-`npm run check:gemini` checks the optional Gemini configuration for the
-separate `VM_Gemini_4` profile; Gemini is not used by chat.
+### Gemini API as a fallback for the four original chat profiles
+
+For **Alex, Aria (internal id `si_1`), Astyria and Aurelius**, the server
+tries the existing LLM providers first and uses **Google Gemini** only if
+previous providers fail. This is a provider failover, not a new agent, a new
+MCP server or an independent background worker.
+
+Configure a **Gemini API key** obtained at https://aistudio.google.com/apikey
+as the server-side `GEMINI_API_KEY` secret (Codespaces Secrets or Google AI
+Studio secret management). Do not commit or paste real keys into repository
+files, requests or chat. Restart/redeploy the server after changing secrets.
+
+The default provider preference is:
+
+```dotenv
+LLM_PROVIDERS="ollama,xai,gemini"
+GEMINI_AS_FALLBACK="on"
+GEMINI_MODEL="gemini-3.8-flash"
+GEMINI_FALLBACK_MODELS="gemini-3.7-flash"
+```
+
+- Ollama is tried first, then xAI if its key is configured; Gemini is last
+  when `GEMINI_API_KEY` is set.
+- `GEMINI_AS_FALLBACK=on` moves Gemini to the end even with a legacy
+  `LLM_PROVIDERS="gemini,ollama,xai"` in an old `.env`.
+- To explicitly override the order for another deployment, set
+  `GEMINI_AS_FALLBACK=off` and supply your own `LLM_PROVIDERS`.
+- If `LLM_PROVIDERS` explicitly excludes `gemini`, it will stay disabled.
+  Include the provider and add the key to activate failover.
+- If only Gemini is configured/working, it may answer immediately after the
+  primary attempt fails; its use depends on API availability and quota.
+- History, system instructions, image attachments and agent identities stay
+  on the existing chat pipeline. PDF attachments require Gemini and may cause
+  the non-PDF-capable primary providers to be tried unsuccessfully first.
+
+Check the provider without sending real user chat data:
+
+```bash
+npm run check:gemini
+npm test
+npm run lint
+```
+
+A passing mocked test does not prove that your live Gemini key is valid.
+The application does not run an additional autonomous agent using this
+fallback; switching providers only affects inference.
+
+`npm run check:gemini` sends a short test prompt to the Google API; it is
+also used for the separate `VM_Gemini_4` profile.
 
 ## Local `VM_Gemini_4` guest
 
