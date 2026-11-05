@@ -17,6 +17,7 @@ import {
   CHAT_ATTACHMENT_ACCEPT,
   ChatAttachment,
   MAX_CHAT_ATTACHMENTS,
+  isChatImageMimeType,
   readChatAttachmentFile,
   validateChatAttachments,
 } from '../kernel/chatAttachments';
@@ -449,8 +450,12 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             <ul aria-label="Załączone pliki" className="mb-2 flex flex-wrap gap-1.5">
               {chatAttachments.map((file, index) => (
                 <li key={`${file.name}-${index}`} className="flex items-center gap-1 rounded border border-cyan-500/30 bg-cyan-950/40 px-2 py-1 text-[10px] text-cyan-100">
-                  <FileText className="h-3 w-3" />
-                  <span>{file.name}</span>
+                  {isChatImageMimeType(file.mimeType) ? (
+                    <img src={`data:${file.mimeType};base64,${file.content}`} alt="" className="h-8 w-8 rounded object-cover" />
+                  ) : (
+                    <FileText className="h-3 w-3" />
+                  )}
+                  <span className="max-w-[10rem] truncate">{file.name}</span>
                   <button
                     type="button"
                     onClick={() => setChatAttachments((current) => current.filter((_, fileIndex) => fileIndex !== index))}
@@ -487,7 +492,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               </button>
             )}
           </div>
-          <label className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-700 text-cyan-200 hover:border-cyan-400 ${isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, DOCX, PDF lub JPG (maks. 10 plików; tekst 5 MB/plik, DOCX 20 MB, PDF/JPG 20 MB/plik)">
+          <label className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-700 text-cyan-200 hover:border-cyan-400 ${isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz zdjęcie (JPG, PNG, WebP), PDF, DOCX lub tekst (maks. 10 plików; tekst 5 MB/plik, DOCX, PDF i zdjęcia 20 MB/plik)">
             <Paperclip className="h-4 w-4" />
             <input
               type="file"
@@ -496,7 +501,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               disabled={isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS}
               onChange={(event) => void handleAttachmentSelection(event)}
               className="sr-only"
-              aria-label="Dołącz pliki tekstowe, DOCX, PDF lub JPG"
+              aria-label="Dołącz zdjęcia (JPG, PNG, WebP), PDF, DOCX lub pliki tekstowe"
             />
           </label>
           <button
@@ -510,7 +515,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           </button>
           </div>
           <p className="mt-1 px-1 text-[9px] text-slate-500">
-            Maks. 10 plików; tekst 5 MB/plik i 20 MB łącznie, DOCX 20 MB (10 MB po rozpakowaniu), PDF/JPG 20 MB/plik i 40 MB łącznie.
+            Maks. 10 plików; tekst 5 MB/plik i 20 MB łącznie, DOCX 20 MB (10 MB po rozpakowaniu), PDF i zdjęcia (JPG, PNG, WebP) 20 MB/plik i 40 MB łącznie.
           </p>
         </form>
 

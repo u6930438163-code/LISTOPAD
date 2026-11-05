@@ -48,8 +48,11 @@ import {
   parseChatApprovalCommand,
 } from './src/kernel/chatApprovals';
 import {
+  CHAT_IMAGE_EXTENSIONS,
+  CHAT_IMAGE_FILE_PATTERN,
   ChatAttachment,
   formatChatMessage,
+  isChatImageMimeType,
   MAX_CHAT_MESSAGE_LENGTH,
   validateChatAttachments,
 } from './src/kernel/chatAttachments';
@@ -5159,7 +5162,7 @@ async function generateOpenRouterChatReply(
           file_data: `data:${attachment.mimeType};base64,${attachment.content}`,
         },
       });
-    } else if (attachment.mimeType === 'image/jpeg') {
+    } else if (isChatImageMimeType(attachment.mimeType)) {
       userContent.push({
         type: 'image_url',
         image_url: { url: `data:${attachment.mimeType};base64,${attachment.content}` },
@@ -5672,6 +5675,49 @@ app.post('/api/agents/inbox/read', (req, res) => {
   res.json({ success: true });
 });
 
+// --- ZDJĘCIA CZATU: prawdziwe pliki przesłane przez użytkownika, wyświetlane w historii czatu ---
+const CHAT_IMAGES_DIR = path.resolve('data', 'chat-images');
+const CHAT_IMAGE_CONTENT_TYPES: Record<string, string> = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+
+/**
+ * Zapisuje zdjęcia z wiadomości na dysku (nazwa = skrót SHA-256 treści, więc ten sam plik
+ * nie jest duplikowany) i dopisuje do załącznika adres, pod którym czat może je wyświetlić.
+ * Błąd zapisu nie blokuje wiadomości — zdjęcie trafia wtedy tylko do modelu, bez podglądu.
+ */
+function storeChatImages(attachments: ChatAttachment[]): ChatAttachment[] {
+  return attachments.map((attachment) => {
+    if (!isChatImageMimeType(attachment.mimeType)) return attachment;
+    try {
+      const data = Buffer.from(attachment.content, 'base64');
+      const fileName = `${createHash('sha256').update(data).digest('hex').slice(0, 32)}.${CHAT_IMAGE_EXTENSIONS[attachment.mimeType]}`;
+      fs.mkdirSync(CHAT_IMAGES_DIR, { recursive: true });
+      const filePath = path.join(CHAT_IMAGES_DIR, fileName);
+      if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, data);
+      return { ...attachment, url: `/api/chat/images/${fileName}` };
+    } catch (error: any) {
+      pushSystemLog('warn', 'KERNEL', `[CZAT] Nie udało się zapisać zdjęcia ${attachment.name}: ${error?.message || error}`);
+      return attachment;
+    }
+  });
+}
+
+app.get('/api/chat/images/:file', (req, res) => {
+  const file = req.params.file;
+  if (!CHAT_IMAGE_FILE_PATTERN.test(file)) {
+    return res.status(400).json({ error: 'Nieprawidłowa nazwa zdjęcia.' });
+  }
+  const filePath = path.join(CHAT_IMAGES_DIR, file);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Nie znaleziono zdjęcia.' });
+  }
+  res.setHeader('Content-Type', CHAT_IMAGE_CONTENT_TYPES[file.split('.').pop() as string]);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  // Nazwa pliku jest skrótem treści, więc plik pod danym adresem nigdy się nie zmienia.
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  return res.sendFile(filePath);
+});
+
 app.post('/api/triad/message', async (req, res) => {
   const message: unknown = req.body?.message;
   const attachmentValidation = validateChatAttachments(req.body?.attachments ?? []);
@@ -5698,6 +5744,11 @@ app.post('/api/triad/message', async (req, res) => {
     });
   }
   const cleanMessage = formatChatMessage(stripForceLlmPrefix(message), attachments);
+  // Wersja zapisywana w historii zawiera osadzone zdjęcia, aby czat je wyświetlał.
+  const hasImages = attachments.some((attachment) => isChatImageMimeType(attachment.mimeType));
+  const displayMessage = hasImages
+    ? formatChatMessage(stripForceLlmPrefix(message), storeChatImages(attachments))
+    : cleanMessage;
   const requestedTarget: unknown = req.body?.agent === undefined ? 'triad' : req.body.agent;
   const approvalCommand: ChatApprovalCommand | null = parseChatApprovalCommand(message);
   const maxMessageLength = approvalCommand ? MAX_PROPOSED_FILE_SIZE + 500 : MAX_CHAT_MESSAGE_LENGTH;
@@ -5716,7 +5767,7 @@ app.post('/api/triad/message', async (req, res) => {
   const target = requestedTarget as ChatTarget;
   const persistedMessage = approvalCommand?.type === 'propose' && approvalCommand.action.type === 'write-file'
     ? message
-    : cleanMessage;
+    : displayMessage;
   // Operator wyłączył mechanizm zatwierdzania (chat_approvals=DISABLED_AUTO_EXEC) — propozycje auto-wykonują się bez blokady origin.
   const chatApprovalsDisabled = (await getPythonKernelState().catch(() => null))?.store?.config?.chat_approvals === 'DISABLED_AUTO_EXEC';
 
@@ -5985,6 +6036,7 @@ app.post('/api/triad/message', async (req, res) => {
         ? replies.map(([agent, text]) => `${agent}:\n${text}`).join('\n\n')
         : replyMap[target],
       replies: replyMap,
+      userMessage: persistedMessage,
       analysis,
       state: finalState,
     });

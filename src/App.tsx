@@ -401,7 +401,7 @@ export default function App() {
         {
           agent: 'Mateusz Mitek',
           tekst: attachments.length > 0
-            ? formatChatMessage(message, attachments)
+            ? (typeof result.userMessage === 'string' ? result.userMessage : formatChatMessage(message, attachments))
             : message.startsWith('/propose write-file ')
             ? message
             : message.trim(),

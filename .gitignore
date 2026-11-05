@@ -14,3 +14,6 @@ bastillaos/vm-gemini-4/data/
 # Local AI tool binaries; never synchronize these with source.
 .bastilla-tools/
 
+
+# Zdjęcia przesłane w czacie (prywatne dane użytkownika).
+data/chat-images/
