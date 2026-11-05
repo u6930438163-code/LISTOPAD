@@ -511,7 +511,7 @@ export default function App() {
             versionCount={dataStore?.update_history?.length || 0}
           />
 
-        <main className={`flex min-w-0 flex-1 flex-col overflow-hidden ${activeTab === 'comms' ? 'h-full w-full flex-1' : activeTab === 'terminal' ? 'min-h-[75dvh] w-full lg:min-h-[calc(100dvh-7rem)]' : 'min-h-0'}`}>
+        <main className={`flex min-w-0 flex-1 flex-col overflow-x-hidden ${activeTab === 'comms' || activeTab === 'terminal' ? 'min-h-[75dvh] w-full lg:min-h-[calc(100dvh-7rem)]' : 'min-h-0'}`}>
           {activeTab === 'home' && <SystemResourceMeters />}
           {activeTab === 'home' && <OllamaModelManager />}
           {activeTab === 'home' && <BackgroundAgentsStatus />}

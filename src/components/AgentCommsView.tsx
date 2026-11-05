@@ -150,7 +150,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   };
 
   return (
-    <div className="relative h-full w-full flex-1 flex min-h-0 min-w-0 flex-col overflow-hidden bg-slate-950 font-mono text-xs cyber-grid lg:flex-row">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-950 font-mono text-xs cyber-grid lg:flex-row">
       <div className="grid grid-cols-2 gap-1 border-b border-slate-800 bg-slate-900/90 p-1.5 lg:hidden">
         <button
           type="button"

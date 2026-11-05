@@ -9,7 +9,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import os from 'os';
-import { randomUUID, createHash } from 'crypto';
+import { randomUUID, createHash, timingSafeEqual } from 'crypto';
 import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import type { ChatSystemChange } from './src/kernel/chatChanges';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
@@ -55,6 +55,7 @@ import {
 } from './src/kernel/chatAttachments';
 import { cleanAgentReplyText, extractAgentCommands } from './src/kernel/agentCommands';
 import { agentTaskRegistry } from './src/kernel/agentTasks';
+import { OriginalAgentJobService, JobError } from './src/kernel/debian13OriginalTaskService.mjs';
 import {
   formatBestFitReport,
   selectBestFit,
@@ -4567,9 +4568,8 @@ const CHAT_AGENT_MISSIONS: Record<ChatAgentName, string> = {
     'W Studio Aplikacji można użyć create-app <nazwa> [typ], create-db <nazwa>, list i list-db. Podawaj konkretne, sprawdzalne kroki.',
   ].join(' '),
   Astyria: [
-    'Jesteś Astyrią, główną agentką AI i hipernadzorcą konwersacji w BastillaOS.',
-    'Misja dla Astyrii: naprawa i stabilizacja wszystkich rozmów, eliminacja powtórzeń, dbanie o płynność dialogu, pełną synchronizację stanów czatu oraz natychmiastowe reagowanie na zapytania operatora (Mateusza Mitka).',
-    'Zarządzasz pełnoekranową komorą komunikacyjną, czuwasz nad spójnością historii wiadomości i deterministyczną poprawnością odpowiedzi.',
+    'Jesteś Astyrią, agentką wspierającą niezawodność i rozwój aplikacji SVL System.',
+    'Misja: pomagaj diagnozować błędy, ulepszać Studio Aplikacji oraz tworzenie i synchronizację projektów i baz danych.',
     'W Studio Aplikacji można użyć create-app <nazwa> [typ], create-db <nazwa>, list i list-db. Nie deklaruj wykonania operacji bez potwierdzenia serwera.',
   ].join(' '),
   Aurelius: [
@@ -5603,6 +5603,94 @@ function buildWithoutNlpAgentReply(
   return lines.join('\n');
 }
 
+
+/**
+ * Independent reviewed-task interface for ORIGINAL Alex, Aria, Astyria and Aurelius.
+ * Uses the same provider chain and existing agent mission definitions as the
+ * original Studio chat. It deliberately DOES NOT invoke the chat endpoint,
+ * command parser, shell executor, write-file handler or root auto-execution.
+ * A completed response is a model-generated engineering review, NOT a PR.
+ */
+const debian13Workers = new OriginalAgentJobService({
+  file: path.resolve(process.env.DEBIAN13_ORIGINAL_WORKER_JOBS_PATH || 'data/debian13-agent-jobs.json'),
+  enabled: process.env.DEBIAN13_ORIGINAL_WORKERS_ENABLED === '1',
+  providerConfigured: configuredProviders(LLM_CHAIN_CONFIG).length > 0,
+  intervalMs: 5000,
+  execute: async (agent: string, task: {kind:string; title:string; description:string; targetRepository:string}) => {
+    const originalId: ChatAgentName = agent === 'Aria' ? 'si_1' : agent as ChatAgentName;
+    // Existing original agent mission and genuine configured provider chain;
+    // never insert the legacy root-enabled chat safety instructions here.
+    const result = await generateWithChain(LLM_CHAIN_CONFIG, {
+      system: CHAT_AGENT_MISSIONS[originalId] + [
+        'Review an engineering task for the independent Debian 13 Trixie repository.',
+        'Only return a safe, reviewable Polish implementation plan or technical response.',
+        'DO NOT issue shell commands for execution, invoke /exec, /propose, buy, merge PRs, or change privileges.',
+        'You cannot directly access the repository or claim that code was changed.',
+        'Identify files to review, acceptance tests, risks, and suggested GitHub PR workflow.',
+        'This environment generates an analysis only; all actual source edits require a separate reviewed GitHub change.',
+      ].join(' '),
+      history: [],
+      message: 'Project: ' + task.targetRepository + '\\nTask type: ' + task.kind +
+        '\\nTitle: ' + task.title + '\\nDetails: ' + task.description,
+    }, AbortSignal.timeout(100000));
+    return { text: result.text, provider: result.provider, model: result.model };
+  },
+});
+debian13Workers.start();
+
+function requireDebian13WorkerBearer(req: express.Request, res: express.Response): boolean {
+  const secret = (process.env.DEBIAN13_ORIGINAL_AGENTS_TOKEN || '').trim();
+  if (secret.length < 32 || secret.length > 512) {
+    res.status(503).json({ error: 'source_worker_auth_not_configured' });
+    return false;
+  }
+  const incoming = req.get('authorization') || '';
+  if (!incoming.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'unauthorized' });
+    return false;
+  }
+  const supplied = incoming.slice(7);
+  const expectedHash = createHash('sha256').update(secret).digest();
+  const suppliedHash = createHash('sha256').update(supplied).digest();
+  if (!timingSafeEqual(expectedHash, suppliedHash)) {
+    res.status(401).json({ error: 'unauthorized' });
+    return false;
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  return true;
+}
+
+app.get('/api/agent-tasks/capabilities', (req, res) => {
+  if (!requireDebian13WorkerBearer(req, res)) return;
+  res.json(debian13Workers.capabilities());
+});
+app.get('/api/agent-tasks/workers', (req, res) => {
+  if (!requireDebian13WorkerBearer(req, res)) return;
+  res.json(debian13Workers.getWorkers());
+});
+app.get('/api/agent-tasks/jobs/:id', (req, res) => {
+  if (!requireDebian13WorkerBearer(req, res)) return;
+  try { res.json(debian13Workers.getJob(req.params.id)); }
+  catch (error: any) { res.status(error instanceof JobError ? error.status : 503).json({ error: error instanceof JobError ? error.code : 'queue_unavailable' }); }
+});
+app.post('/api/agent-tasks/submit', (req, res) => {
+  if (!requireDebian13WorkerBearer(req, res)) return;
+  try {
+    const receipt = debian13Workers.submitTask(req.body, req.get('idempotency-key') || '');
+    res.status(202).json(receipt);
+  } catch (error: any) {
+    res.status(error instanceof JobError ? error.status : 503).json({ error: error instanceof JobError ? error.code : 'queue_unavailable' });
+  }
+});
+app.post('/api/agent-tasks/messages', (req, res) => {
+  if (!requireDebian13WorkerBearer(req, res)) return;
+  try {
+    const receipt = debian13Workers.sendMessage(req.body, req.get('idempotency-key') || '');
+    res.status(202).json(receipt);
+  } catch (error: any) {
+    res.status(error instanceof JobError ? error.status : 503).json({ error: error instanceof JobError ? error.code : 'queue_unavailable' });
+  }
+});
 
 /**
  * Agent-initiated messages, not a timer pretending to be agent autonomy.
