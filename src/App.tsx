@@ -171,6 +171,12 @@ export default function App() {
 
   // Full system & version synchronization via Astyria mission endpoint + kernel state
   const handleSyncSystem = async () => {
+    const reloadPreview = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', activeTab);
+      url.searchParams.set('_sync', String(Date.now()));
+      window.location.assign(url.toString());
+    };
     try {
       const res = await fetch('/api/astyria/mission', {
         method: 'POST',
@@ -186,6 +192,7 @@ export default function App() {
           try {
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
           } catch {}
+          reloadPreview();
           return;
         }
       }
@@ -196,10 +203,14 @@ export default function App() {
         if (stateData?.store) {
           const normalized = normalizeDataStore(stateData.store);
           setDataStore(normalized);
+          reloadPreview();
+          return;
         }
       }
+      throw new Error('Serwer nie potwierdził synchronizacji. Podgląd nie został odświeżony.');
     } catch (e) {
       console.error(e);
+      throw e;
     }
   };
 
@@ -511,7 +522,7 @@ export default function App() {
             versionCount={dataStore?.update_history?.length || 0}
           />
 
-        <main className={`flex min-w-0 flex-1 flex-col overflow-hidden ${activeTab === 'comms' ? 'h-full w-full flex-1' : activeTab === 'terminal' ? 'min-h-[75dvh] w-full lg:min-h-[calc(100dvh-7rem)]' : 'min-h-0'}`}>
+        <main className={`flex min-w-0 flex-1 flex-col overflow-x-hidden ${activeTab === 'comms' || activeTab === 'terminal' ? 'min-h-[75dvh] w-full lg:min-h-[calc(100dvh-7rem)]' : 'min-h-0'}`}>
           {activeTab === 'home' && <SystemResourceMeters />}
           {activeTab === 'home' && <OllamaModelManager />}
           {activeTab === 'home' && <BackgroundAgentsStatus />}

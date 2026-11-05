@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   LlmChainError,
   configuredProviders,
+  preferGeminiAsFallback,
   generateWithChain,
   pickXaiChatModel,
   resetXaiModelCache,
@@ -282,4 +283,114 @@ test('rozgrzewka Ollamy wczytuje model i nie rzuca przy awarii', async () => {
   const down = mockFetch([[/api\/chat/, { respond: () => { throw new TypeError('fetch failed'); } }]]);
   const failed = await warmupOllama({ ollamaModel: 'qwen3.5:4b', fetchImpl: down.impl });
   assert.equal(failed.ok, false);
+});
+
+
+test('Gemini jest fallbackiem: zachowuje kolejność głównych silników i pozwala wyłączyć wymuszenie', () => {
+  assert.deepEqual(preferGeminiAsFallback(['gemini', 'ollama', 'xai']), ['ollama', 'xai', 'gemini']);
+  assert.deepEqual(preferGeminiAsFallback(['xai', 'gemini', 'ollama']), ['xai', 'ollama', 'gemini']);
+  assert.deepEqual(preferGeminiAsFallback(['gemini']), ['gemini']);
+  assert.deepEqual(preferGeminiAsFallback(['gemini', 'ollama'], false), ['gemini', 'ollama']);
+  assert.deepEqual(preferGeminiAsFallback(['ollama', 'xai']), ['ollama', 'xai']);
+});
+
+test('sukces głównego modelu Ollama: Gemini nie jest wywoływany', async () => {
+  const { impl, calls } = mockFetch([
+    [/127\.0\.0\.1:11434\/api\/chat/, { respond: () => ollamaOk('Ollama obsłużyła rozmowę.') }],
+  ]);
+  const result = await generateWithChain({
+    providers: preferGeminiAsFallback(['gemini', 'ollama']),
+    geminiApiKey: 'key-unused', geminiModel: 'gemini-3.8-flash',
+    ollamaModel: 'gemma3:4b', fetchImpl: impl,
+  }, request);
+  assert.equal(result.provider, 'ollama');
+  assert.equal(result.text, 'Ollama obsłużyła rozmowę.');
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.includes('/api/chat'));
+});
+
+test('awaria głównego modelu: Gemini odpowiada dopiero jako zapasowy', async () => {
+  const { impl, calls } = mockFetch([
+    [/127\.0\.0\.1:11434\/api\/chat/, { respond: () => json(503, { error: 'model unavailable' }) }],
+    [/generativelanguage.*gemini-3\.8-flash:generateContent/, { respond: () => geminiOk('Gemini przejął rozmowę.') }],
+  ]);
+  const result = await generateWithChain({
+    providers: preferGeminiAsFallback(['gemini', 'ollama']),
+    geminiApiKey: 'gemini-fixture-key', geminiModel: 'gemini-3.8-flash',
+    ollamaModel: 'gemma3:4b', fetchImpl: impl,
+  }, request);
+  assert.equal(result.provider, 'gemini');
+  assert.equal(result.model, 'gemini-3.8-flash');
+  assert.equal(result.text, 'Gemini przejął rozmowę.');
+  assert.equal(result.failures.length, 1);
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0].url.includes('/api/chat'));
+  assert.ok(calls[1].url.includes('generativelanguage.googleapis.com'));
+  assert.equal(calls[1].headers['x-goog-api-key'], 'gemini-fixture-key');
+  assert.equal(calls[1].body.systemInstruction.parts[0].text, request.system);
+});
+
+test('brak klucza Gemini: fallback nie jest uaktywniany', () => {
+  assert.deepEqual(configuredProviders({
+    providers: preferGeminiAsFallback(['gemini', 'ollama']),
+    geminiApiKey: '',
+  }), ['ollama']);
+});
+
+test('pusta jawna lista dostawców nie włącza Gemini automatycznie', () => {
+  assert.deepEqual(configuredProviders({ providers: [], geminiApiKey: 'configured' }), []);
+});
+
+test('limit czasu Ollamy pozwala wypróbować Gemini', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push(String(url));
+    if (String(url).includes('/api/chat')) {
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+      });
+    }
+    return geminiOk('Odpowiedź awaryjna');
+  };
+  const result = await generateWithChain({
+    providers: ['ollama', 'gemini'], ollamaModel: 'test',
+    geminiApiKey: 'fixture', geminiModel: 'gemini-a', providerTimeoutMs: 20, fetchImpl,
+  }, request, AbortSignal.timeout(1000));
+  assert.equal(result.provider, 'gemini');
+  assert.match(result.failures[0], /przekroczono czas/);
+  assert.equal(calls.length, 2);
+});
+
+test('anulowanie całego żądania nie uruchamia kolejnego dostawcy', async () => {
+  const calls = [];
+  const controller = new AbortController();
+  const fetchImpl = async (url, options = {}) => {
+    calls.push(String(url));
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+      controller.abort();
+    });
+  };
+  await assert.rejects(generateWithChain({
+    providers: ['ollama', 'gemini'], ollamaModel: 'test',
+    geminiApiKey: 'fixture', geminiModel: 'gemini-a', providerTimeoutMs: 500, fetchImpl,
+  }, request, controller.signal), LlmChainError);
+  assert.equal(calls.length, 1);
+});
+
+test('PDF nie jest pomijany przez Ollamę ani xAI przed przekazaniem do Gemini', async () => {
+  const { impl, calls } = mockFetch([
+    [/generativelanguage.*gemini-a:generateContent/, { respond: () => geminiOk('Zawartość PDF') }],
+  ]);
+  const pdf = { name: 'report.pdf', mimeType: 'application/pdf', content: 'JVBERi0=' };
+  const result = await generateWithChain({
+    providers: ['ollama', 'xai', 'gemini'], ollamaModel: 'test', xaiApiKey: 'fixture-x',
+    geminiApiKey: 'fixture-g', geminiModel: 'gemini-a', fetchImpl: impl,
+  }, { ...request, attachments: [pdf] });
+  assert.equal(result.provider, 'gemini');
+  assert.equal(result.failures.length, 2);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body.contents.at(-1).parts[1].inlineData, {
+    mimeType: 'application/pdf', data: pdf.content,
+  });
 });

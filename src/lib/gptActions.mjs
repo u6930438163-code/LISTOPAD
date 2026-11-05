@@ -1,6 +1,9 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 const AGENTS = ['Aria', 'Alex', 'Astyria', 'Aurelius'];
+const MAX_HISTORY_TURNS = 16;
+const MAX_HISTORY_CHARS = 16000;
+const MAX_HISTORY_TURN_CHARS = 2000;
 const digest = (text) => createHash('sha256').update(text).digest();
 
 export function gptActionsSchema(origin) {
@@ -35,6 +38,7 @@ export function gptActionsSchema(origin) {
           type: 'object', additionalProperties: false, required: ['message'], properties: {
             agent: { type: 'string', enum: AGENTS, default: 'Aria' },
             message: { type: 'string', minLength: 1, maxLength: 12000 },
+            history: { type: 'array', maxItems: MAX_HISTORY_TURNS, description: 'Optional previous dialogue turns in chronological order. No server-side history is stored.', items: { type: 'object', additionalProperties: false, required: ['role', 'text'], properties: { role: { type: 'string', enum: ['user', 'assistant'] }, text: { type: 'string', minLength: 1, maxLength: MAX_HISTORY_TURN_CHARS } } } },
           },
         } } } },
         responses: { '200': result({ success: { type: 'boolean' }, agent: { type: 'string' }, reply: { type: 'string' }, engine: { type: 'string' }, truncated: { type: 'boolean' } }), ...errors },
@@ -84,8 +88,15 @@ export function registerGptActions(app, { chat, providers, env = process.env, ti
   });
   app.post('/api/gpt-actions/message', authorize, async (req, res) => {
     const body = req.body;
-    if (!body || Array.isArray(body) || typeof body !== 'object' || Object.keys(body).some((key) => !['message', 'agent'].includes(key)) || typeof body.message !== 'string' || !body.message.trim() || body.message.length > 12000 || !AGENTS.includes(body.agent ?? 'Aria')) {
-      return res.status(400).json({ error: 'Supply message (1–12000 characters) and an optional supported agent.' });
+    const history = body?.history ?? [];
+    const invalidHistory = !Array.isArray(history) || history.length > MAX_HISTORY_TURNS
+      || history.some((turn) => !turn || typeof turn !== 'object' || Array.isArray(turn)
+        || Object.keys(turn).some((key) => !['role', 'text'].includes(key))
+        || !['user', 'assistant'].includes(turn.role)
+        || typeof turn.text !== 'string' || !turn.text.trim() || turn.text.length > MAX_HISTORY_TURN_CHARS)
+      || (Array.isArray(history) && history.reduce((count, turn) => count + (typeof turn?.text === 'string' ? turn.text.length : 0), 0) > MAX_HISTORY_CHARS);
+    if (!body || Array.isArray(body) || typeof body !== 'object' || Object.keys(body).some((key) => !['message', 'agent', 'history'].includes(key)) || typeof body.message !== 'string' || !body.message.trim() || body.message.length > 12000 || !AGENTS.includes(body.agent ?? 'Aria') || invalidHistory) {
+      return res.status(400).json({ error: 'Supply message (1–12000 characters), optional supported agent and at most 16 valid dialogue turns.' });
     }
     if (!providers().length) return res.status(503).json({ error: 'No AI provider configured.' });
     if (active >= 2) return res.status(429).json({ error: 'Two requests are already running. Retry later.' });
@@ -97,7 +108,7 @@ export function registerGptActions(app, { chat, providers, env = process.env, ti
         timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, timeoutMs);
       });
       const agent = body.agent ?? 'Aria';
-      const result = await Promise.race([chat(agent, body.message.trim(), controller.signal), deadline]);
+      const result = await Promise.race([chat(agent, body.message.trim(), controller.signal, history.map(({ role, text }) => ({ role, text: text.trim() }))), deadline]);
       if (!result || typeof result.text !== 'string' || !result.text.trim()) throw new Error('empty reply');
       return res.json({ success: true, agent, reply: result.text.slice(0, 12000), engine: `${result.provider}:${result.model}`, truncated: result.text.length > 12000 });
     } catch {
