@@ -2037,7 +2037,7 @@
     "agent": "Alex",
     "title": "Zapis pliku w nowej aplikacji",
     "description": "Weryfikacja automatycznego tworzenia aplikacji przy zapisie pliku",
-    "status": "completed",
+    "status": "failed",
     "createdAt": "2026-11-01T17:03:35.695Z",
     "logs": [
       "[2026-11-01T17:03:35.695Z] Zadanie zarejestrowane w kolejce.",
@@ -2055,6 +2055,251 @@
       "sizeBytes": 11
     },
     "result": "Plik test.json w aplikacji test-auto-app-1793552615695 zapisany (11 B).",
-    "completedAt": "2026-11-01T17:03:35.700Z"
+    "completedAt": "2026-11-01T17:03:35.700Z",
+    "error": "Brak pliku artefaktu na dysku: apps/test-auto-app-1793552615695/test.json"
+  },
+  {
+    "id": "task-1793724831279-t7si4",
+    "agent": "Astyria",
+    "title": "Test audytu integralności",
+    "description": "Testowanie silnika zadań agentów",
+    "status": "completed",
+    "createdAt": "2026-11-03T16:53:51.279Z",
+    "logs": [
+      "[2026-11-03T16:53:51.279Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-03T16:53:51.283Z] Rozpoczęto wykonywanie zadania przez agenta Astyria.",
+      "[2026-11-03T16:53:51.314Z] Skanowanie spójności plików jądra i konfiguracji...",
+      "[2026-11-03T16:53:51.934Z] Zapisano raport integralności: /app/applet/exports/system_integrity_report.json",
+      "[2026-11-03T16:53:51.935Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: exports/system_integrity_report.json"
+    ],
+    "startedAt": "2026-11-03T16:53:51.283Z",
+    "artifact": {
+      "path": "exports/system_integrity_report.json",
+      "name": "system_integrity_report.json",
+      "sizeBytes": 236
+    },
+    "result": "Raport integralności wygenerowany pomyślnie (236 B).",
+    "completedAt": "2026-11-03T16:53:51.935Z"
+  },
+  {
+    "id": "task-1793724831941-2875s",
+    "agent": "Alex",
+    "title": "Zapis pliku w nowej aplikacji",
+    "description": "Weryfikacja automatycznego tworzenia aplikacji przy zapisie pliku",
+    "status": "failed",
+    "createdAt": "2026-11-03T16:53:51.941Z",
+    "logs": [
+      "[2026-11-03T16:53:51.941Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-03T16:53:51.942Z] Rozpoczęto wykonywanie zadania przez agenta Alex.",
+      "[2026-11-03T16:53:51.943Z] Zapisywanie pliku test.json do apps/test-auto-app-1793724831941...",
+      "[2026-11-03T16:53:51.944Z] Utworzono brakujący katalog aplikacji apps/test-auto-app-1793724831941.",
+      "[2026-11-03T16:53:51.945Z] Zapisano plik apps/test-auto-app-1793724831941/test.json.",
+      "[2026-11-03T16:53:51.948Z] Utworzono manifest app.json dla apps/test-auto-app-1793724831941.",
+      "[2026-11-03T16:53:51.949Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: apps/test-auto-app-1793724831941/test.json"
+    ],
+    "startedAt": "2026-11-03T16:53:51.942Z",
+    "artifact": {
+      "path": "apps/test-auto-app-1793724831941/test.json",
+      "name": "test.json",
+      "sizeBytes": 11
+    },
+    "result": "Plik test.json w aplikacji test-auto-app-1793724831941 zapisany (11 B).",
+    "completedAt": "2026-11-03T16:53:51.949Z",
+    "error": "Brak pliku artefaktu na dysku: apps/test-auto-app-1793724831941/test.json"
+  },
+  {
+    "id": "task-1793725282736-cw8w5",
+    "agent": "Astyria",
+    "title": "Test audytu integralności",
+    "description": "Testowanie silnika zadań agentów",
+    "status": "completed",
+    "createdAt": "2026-11-03T17:01:22.736Z",
+    "logs": [
+      "[2026-11-03T17:01:22.736Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-03T17:01:22.738Z] Rozpoczęto wykonywanie zadania przez agenta Astyria.",
+      "[2026-11-03T17:01:22.740Z] Skanowanie spójności plików jądra i konfiguracji...",
+      "[2026-11-03T17:01:23.343Z] Zapisano raport integralności: /app/applet/exports/system_integrity_report.json",
+      "[2026-11-03T17:01:23.344Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: exports/system_integrity_report.json"
+    ],
+    "startedAt": "2026-11-03T17:01:22.738Z",
+    "artifact": {
+      "path": "exports/system_integrity_report.json",
+      "name": "system_integrity_report.json",
+      "sizeBytes": 236
+    },
+    "result": "Raport integralności wygenerowany pomyślnie (236 B).",
+    "completedAt": "2026-11-03T17:01:23.344Z"
+  },
+  {
+    "id": "task-1793725283349-nspv1",
+    "agent": "Alex",
+    "title": "Zapis pliku w nowej aplikacji",
+    "description": "Weryfikacja automatycznego tworzenia aplikacji przy zapisie pliku",
+    "status": "failed",
+    "createdAt": "2026-11-03T17:01:23.349Z",
+    "logs": [
+      "[2026-11-03T17:01:23.349Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-03T17:01:23.350Z] Rozpoczęto wykonywanie zadania przez agenta Alex.",
+      "[2026-11-03T17:01:23.352Z] Zapisywanie pliku test.json do apps/test-auto-app-1793725283349...",
+      "[2026-11-03T17:01:23.353Z] Utworzono brakujący katalog aplikacji apps/test-auto-app-1793725283349.",
+      "[2026-11-03T17:01:23.354Z] Zapisano plik apps/test-auto-app-1793725283349/test.json.",
+      "[2026-11-03T17:01:23.356Z] Utworzono manifest app.json dla apps/test-auto-app-1793725283349.",
+      "[2026-11-03T17:01:23.358Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: apps/test-auto-app-1793725283349/test.json"
+    ],
+    "startedAt": "2026-11-03T17:01:23.350Z",
+    "artifact": {
+      "path": "apps/test-auto-app-1793725283349/test.json",
+      "name": "test.json",
+      "sizeBytes": 11
+    },
+    "result": "Plik test.json w aplikacji test-auto-app-1793725283349 zapisany (11 B).",
+    "completedAt": "2026-11-03T17:01:23.358Z",
+    "error": "Brak pliku artefaktu na dysku: apps/test-auto-app-1793725283349/test.json"
+  },
+  {
+    "id": "task-1793848744195-swgvc",
+    "agent": "Astyria",
+    "title": "Test audytu integralności",
+    "description": "Testowanie silnika zadań agentów",
+    "status": "completed",
+    "createdAt": "2026-11-05T03:19:04.195Z",
+    "logs": [
+      "[2026-11-05T03:19:04.195Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-05T03:19:04.197Z] Rozpoczęto wykonywanie zadania przez agenta Astyria.",
+      "[2026-11-05T03:19:04.198Z] Skanowanie spójności plików jądra i konfiguracji...",
+      "[2026-11-05T03:19:04.800Z] Zapisano raport integralności: /app/applet/exports/system_integrity_report.json",
+      "[2026-11-05T03:19:04.801Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: exports/system_integrity_report.json"
+    ],
+    "startedAt": "2026-11-05T03:19:04.197Z",
+    "artifact": {
+      "path": "exports/system_integrity_report.json",
+      "name": "system_integrity_report.json",
+      "sizeBytes": 236
+    },
+    "result": "Raport integralności wygenerowany pomyślnie (236 B).",
+    "completedAt": "2026-11-05T03:19:04.801Z"
+  },
+  {
+    "id": "task-1793848744805-wncmp",
+    "agent": "Alex",
+    "title": "Zapis pliku w nowej aplikacji",
+    "description": "Weryfikacja automatycznego tworzenia aplikacji przy zapisie pliku",
+    "status": "failed",
+    "createdAt": "2026-11-05T03:19:04.805Z",
+    "logs": [
+      "[2026-11-05T03:19:04.805Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-05T03:19:04.806Z] Rozpoczęto wykonywanie zadania przez agenta Alex.",
+      "[2026-11-05T03:19:04.807Z] Zapisywanie pliku test.json do apps/test-auto-app-1793848744805...",
+      "[2026-11-05T03:19:04.808Z] Utworzono brakujący katalog aplikacji apps/test-auto-app-1793848744805.",
+      "[2026-11-05T03:19:04.809Z] Zapisano plik apps/test-auto-app-1793848744805/test.json.",
+      "[2026-11-05T03:19:04.810Z] Utworzono manifest app.json dla apps/test-auto-app-1793848744805.",
+      "[2026-11-05T03:19:04.811Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: apps/test-auto-app-1793848744805/test.json"
+    ],
+    "startedAt": "2026-11-05T03:19:04.806Z",
+    "artifact": {
+      "path": "apps/test-auto-app-1793848744805/test.json",
+      "name": "test.json",
+      "sizeBytes": 11
+    },
+    "result": "Plik test.json w aplikacji test-auto-app-1793848744805 zapisany (11 B).",
+    "completedAt": "2026-11-05T03:19:04.811Z",
+    "error": "Brak pliku artefaktu na dysku: apps/test-auto-app-1793848744805/test.json"
+  },
+  {
+    "id": "task-1793848755959-x74mt",
+    "agent": "Astyria",
+    "title": "Test audytu integralności",
+    "description": "Testowanie silnika zadań agentów",
+    "status": "completed",
+    "createdAt": "2026-11-05T03:19:15.960Z",
+    "logs": [
+      "[2026-11-05T03:19:15.960Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-05T03:19:15.961Z] Rozpoczęto wykonywanie zadania przez agenta Astyria.",
+      "[2026-11-05T03:19:15.962Z] Skanowanie spójności plików jądra i konfiguracji...",
+      "[2026-11-05T03:19:16.564Z] Zapisano raport integralności: /app/applet/exports/system_integrity_report.json",
+      "[2026-11-05T03:19:16.566Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: exports/system_integrity_report.json"
+    ],
+    "startedAt": "2026-11-05T03:19:15.961Z",
+    "artifact": {
+      "path": "exports/system_integrity_report.json",
+      "name": "system_integrity_report.json",
+      "sizeBytes": 236
+    },
+    "result": "Raport integralności wygenerowany pomyślnie (236 B).",
+    "completedAt": "2026-11-05T03:19:16.566Z"
+  },
+  {
+    "id": "task-1793848756570-tw6co",
+    "agent": "Alex",
+    "title": "Zapis pliku w nowej aplikacji",
+    "description": "Weryfikacja automatycznego tworzenia aplikacji przy zapisie pliku",
+    "status": "failed",
+    "createdAt": "2026-11-05T03:19:16.570Z",
+    "logs": [
+      "[2026-11-05T03:19:16.570Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-05T03:19:16.570Z] Rozpoczęto wykonywanie zadania przez agenta Alex.",
+      "[2026-11-05T03:19:16.571Z] Zapisywanie pliku test.json do apps/test-auto-app-1793848756570...",
+      "[2026-11-05T03:19:16.572Z] Utworzono brakujący katalog aplikacji apps/test-auto-app-1793848756570.",
+      "[2026-11-05T03:19:16.573Z] Zapisano plik apps/test-auto-app-1793848756570/test.json.",
+      "[2026-11-05T03:19:16.574Z] Utworzono manifest app.json dla apps/test-auto-app-1793848756570.",
+      "[2026-11-05T03:19:16.575Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: apps/test-auto-app-1793848756570/test.json"
+    ],
+    "startedAt": "2026-11-05T03:19:16.570Z",
+    "artifact": {
+      "path": "apps/test-auto-app-1793848756570/test.json",
+      "name": "test.json",
+      "sizeBytes": 11
+    },
+    "result": "Plik test.json w aplikacji test-auto-app-1793848756570 zapisany (11 B).",
+    "completedAt": "2026-11-05T03:19:16.575Z",
+    "error": "Brak pliku artefaktu na dysku: apps/test-auto-app-1793848756570/test.json"
+  },
+  {
+    "id": "task-1793848766291-bt9f0",
+    "agent": "Astyria",
+    "title": "Test audytu integralności",
+    "description": "Testowanie silnika zadań agentów",
+    "status": "completed",
+    "createdAt": "2026-11-05T03:19:26.291Z",
+    "logs": [
+      "[2026-11-05T03:19:26.291Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-05T03:19:26.293Z] Rozpoczęto wykonywanie zadania przez agenta Astyria.",
+      "[2026-11-05T03:19:26.294Z] Skanowanie spójności plików jądra i konfiguracji...",
+      "[2026-11-05T03:19:26.895Z] Zapisano raport integralności: /app/applet/exports/system_integrity_report.json",
+      "[2026-11-05T03:19:26.896Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: exports/system_integrity_report.json"
+    ],
+    "startedAt": "2026-11-05T03:19:26.293Z",
+    "artifact": {
+      "path": "exports/system_integrity_report.json",
+      "name": "system_integrity_report.json",
+      "sizeBytes": 236
+    },
+    "result": "Raport integralności wygenerowany pomyślnie (236 B).",
+    "completedAt": "2026-11-05T03:19:26.896Z"
+  },
+  {
+    "id": "task-1793848766901-jjv6u",
+    "agent": "Alex",
+    "title": "Zapis pliku w nowej aplikacji",
+    "description": "Weryfikacja automatycznego tworzenia aplikacji przy zapisie pliku",
+    "status": "completed",
+    "createdAt": "2026-11-05T03:19:26.901Z",
+    "logs": [
+      "[2026-11-05T03:19:26.901Z] Zadanie zarejestrowane w kolejce.",
+      "[2026-11-05T03:19:26.902Z] Rozpoczęto wykonywanie zadania przez agenta Alex.",
+      "[2026-11-05T03:19:26.903Z] Zapisywanie pliku test.json do apps/test-auto-app-1793848766901...",
+      "[2026-11-05T03:19:26.904Z] Utworzono brakujący katalog aplikacji apps/test-auto-app-1793848766901.",
+      "[2026-11-05T03:19:26.905Z] Zapisano plik apps/test-auto-app-1793848766901/test.json.",
+      "[2026-11-05T03:19:26.906Z] Utworzono manifest app.json dla apps/test-auto-app-1793848766901.",
+      "[2026-11-05T03:19:26.907Z] Zadanie zakończone sukcesem. Artefakt potwierdzony: apps/test-auto-app-1793848766901/test.json"
+    ],
+    "startedAt": "2026-11-05T03:19:26.902Z",
+    "artifact": {
+      "path": "apps/test-auto-app-1793848766901/test.json",
+      "name": "test.json",
+      "sizeBytes": 11
+    },
+    "result": "Plik test.json w aplikacji test-auto-app-1793848766901 zapisany (11 B).",
+    "completedAt": "2026-11-05T03:19:26.907Z"
   }
 ]

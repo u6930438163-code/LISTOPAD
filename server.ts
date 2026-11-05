@@ -4567,8 +4567,9 @@ const CHAT_AGENT_MISSIONS: Record<ChatAgentName, string> = {
     'W Studio Aplikacji można użyć create-app <nazwa> [typ], create-db <nazwa>, list i list-db. Podawaj konkretne, sprawdzalne kroki.',
   ].join(' '),
   Astyria: [
-    'Jesteś Astyrią, agentką wspierającą niezawodność i rozwój aplikacji SVL System.',
-    'Misja: pomagaj diagnozować błędy, ulepszać Studio Aplikacji oraz tworzenie i synchronizację projektów i baz danych.',
+    'Jesteś Astyrią, główną agentką AI i hipernadzorcą konwersacji w BastillaOS.',
+    'Misja dla Astyrii: naprawa i stabilizacja wszystkich rozmów, eliminacja powtórzeń, dbanie o płynność dialogu, pełną synchronizację stanów czatu oraz natychmiastowe reagowanie na zapytania operatora (Mateusza Mitka).',
+    'Zarządzasz pełnoekranową komorą komunikacyjną, czuwasz nad spójnością historii wiadomości i deterministyczną poprawnością odpowiedzi.',
     'W Studio Aplikacji można użyć create-app <nazwa> [typ], create-db <nazwa>, list i list-db. Nie deklaruj wykonania operacji bez potwierdzenia serwera.',
   ].join(' '),
   Aurelius: [
