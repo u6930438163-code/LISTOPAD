@@ -1,10 +1,8 @@
 /**
- * Łańcuch modeli językowych dla czatu triady (Alex, Astyria, Aurelius).
+ * Łańcuch modeli językowych dla czatu Alexa, Arii, Astyrii i Aureliusa.
  *
- *   1. Google Gemini (GEMINI_API_KEY, model główny + modele zapasowe)
- *   2. xAI Grok   (XAI_API_KEY, API zgodne z OpenAI, automatyczny dobór modelu)
- *   3. Ollama     (OLLAMA_MODEL, lokalny model na serwerze, działa bez internetu)
- *   4. brak modelu → wywołujący przechodzi na deterministyczny without_nlp
+ * Kolejność dostawców jest ustawiana przez serwer (domyślnie Ollama, xAI,
+ * Gemini). W przypadku awarii wszystkich dostawców decyduje wywołujący.
  *
  * Moduł używa wyłącznie fetch (bez SDK), więc jest w pełni testowalny
  * z podstawionym fetch i nie dodaje zależności npm.
@@ -56,6 +54,8 @@ export interface LlmChainConfig {
   ollamaNumThread?: number;
   /** Kolejność i wybór dostawców (np. ['ollama'] = tylko Ollama). Brak = wszyscy skonfigurowani. */
   providers?: LlmProvider[];
+  /** Osobny limit dla próby jednego dostawcy; pozwala przejść do kolejnego po przekroczeniu czasu. */
+  providerTimeoutMs?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -263,6 +263,9 @@ export async function generateXai(
   request: LlmRequest,
   signal?: AbortSignal,
 ): Promise<{ text: string; model: string }> {
+  if (request.attachments?.some((attachment) => attachment.mimeType === 'application/pdf')) {
+    throw new LlmProviderError('xai', 400, 'xAI: ten kanał nie obsługuje załączników PDF.');
+  }
   const apiKey = (config.xaiApiKey || '').trim();
   if (!apiKey) throw new Error('Brak XAI_API_KEY.');
   const doFetch = config.fetchImpl ?? fetch;
@@ -411,6 +414,9 @@ export async function generateOllama(
   request: LlmRequest,
   signal?: AbortSignal,
 ): Promise<{ text: string; model: string }> {
+  if (request.attachments?.some((attachment) => attachment.mimeType === 'application/pdf')) {
+    throw new LlmProviderError('ollama', 400, 'Ollama: ten kanał nie obsługuje załączników PDF.');
+  }
   const doFetch = config.fetchImpl ?? fetch;
   const base = trimBase(config.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL);
   const model = await resolveOllamaModel(config, doFetch, base, signal);
@@ -504,7 +510,7 @@ export async function warmupOllama(
 }
 
 export function configuredProviders(config: LlmChainConfig): Array<LlmProvider> {
-  if (config.providers && config.providers.length > 0) {
+  if (config.providers) {
     // Jawny wybór: Ollama nie wymaga klucza (model może być wykryty automatycznie).
     return config.providers.filter((provider, index, list) => list.indexOf(provider) === index
       && (provider === 'ollama'
@@ -537,17 +543,25 @@ export async function generateWithChain(
   const failures: string[] = [];
   for (const provider of configuredProviders(config)) {
     if (signal?.aborted) break;
+    const timeout = config.providerTimeoutMs;
+    const controller = new AbortController();
+    const attemptSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    const timer = typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0
+      ? setTimeout(() => controller.abort(), timeout)
+      : undefined;
     try {
       const { text, model } = provider === 'gemini'
-        ? await generateGemini(config, request, signal)
+        ? await generateGemini(config, request, attemptSignal)
         : provider === 'xai'
-        ? await generateXai(config, request, signal)
-        : await generateOllama(config, request, signal);
+        ? await generateXai(config, request, attemptSignal)
+        : await generateOllama(config, request, attemptSignal);
       return { text, provider, model, failures };
     } catch (error: any) {
-      failures.push(error?.name === 'AbortError'
+      failures.push(controller.signal.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError'
         ? `${provider}: przekroczono czas odpowiedzi`
         : String(error?.message || error));
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
   throw new LlmChainError(failures);

@@ -336,3 +336,61 @@ test('brak klucza Gemini: fallback nie jest uaktywniany', () => {
     geminiApiKey: '',
   }), ['ollama']);
 });
+
+test('pusta jawna lista dostawców nie włącza Gemini automatycznie', () => {
+  assert.deepEqual(configuredProviders({ providers: [], geminiApiKey: 'configured' }), []);
+});
+
+test('limit czasu Ollamy pozwala wypróbować Gemini', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push(String(url));
+    if (String(url).includes('/api/chat')) {
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+      });
+    }
+    return geminiOk('Odpowiedź awaryjna');
+  };
+  const result = await generateWithChain({
+    providers: ['ollama', 'gemini'], ollamaModel: 'test',
+    geminiApiKey: 'fixture', geminiModel: 'gemini-a', providerTimeoutMs: 20, fetchImpl,
+  }, request, AbortSignal.timeout(1000));
+  assert.equal(result.provider, 'gemini');
+  assert.match(result.failures[0], /przekroczono czas/);
+  assert.equal(calls.length, 2);
+});
+
+test('anulowanie całego żądania nie uruchamia kolejnego dostawcy', async () => {
+  const calls = [];
+  const controller = new AbortController();
+  const fetchImpl = async (url, options = {}) => {
+    calls.push(String(url));
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+      controller.abort();
+    });
+  };
+  await assert.rejects(generateWithChain({
+    providers: ['ollama', 'gemini'], ollamaModel: 'test',
+    geminiApiKey: 'fixture', geminiModel: 'gemini-a', providerTimeoutMs: 500, fetchImpl,
+  }, request, controller.signal), LlmChainError);
+  assert.equal(calls.length, 1);
+});
+
+test('PDF nie jest pomijany przez Ollamę ani xAI przed przekazaniem do Gemini', async () => {
+  const { impl, calls } = mockFetch([
+    [/generativelanguage.*gemini-a:generateContent/, { respond: () => geminiOk('Zawartość PDF') }],
+  ]);
+  const pdf = { name: 'report.pdf', mimeType: 'application/pdf', content: 'JVBERi0=' };
+  const result = await generateWithChain({
+    providers: ['ollama', 'xai', 'gemini'], ollamaModel: 'test', xaiApiKey: 'fixture-x',
+    geminiApiKey: 'fixture-g', geminiModel: 'gemini-a', fetchImpl: impl,
+  }, { ...request, attachments: [pdf] });
+  assert.equal(result.provider, 'gemini');
+  assert.equal(result.failures.length, 2);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body.contents.at(-1).parts[1].inlineData, {
+    mimeType: 'application/pdf', data: pdf.content,
+  });
+});

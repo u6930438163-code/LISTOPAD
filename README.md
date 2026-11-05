@@ -96,8 +96,11 @@ GEMINI_FALLBACK_MODELS="gemini-3.7-flash"
 - If only Gemini is configured/working, it may answer immediately after the
   primary attempt fails; its use depends on API availability and quota.
 - History, system instructions, image attachments and agent identities stay
-  on the existing chat pipeline. PDF attachments require Gemini and may cause
-  the non-PDF-capable primary providers to be tried unsuccessfully first.
+  on the existing chat pipeline. PDF attachments require Gemini; providers
+  without PDF support are skipped so they cannot silently ignore the file.
+- Each chat provider receives a separate `LLM_TIMEOUT_SEC` budget (multiplied
+  by the number of agents when Ollama is used). If one provider times out, the
+  next can still be tried. The whole request also has an overall deadline.
 
 Check the provider without sending real user chat data:
 
@@ -107,7 +110,12 @@ npm test
 npm run lint
 ```
 
-A passing mocked test does not prove that your live Gemini key is valid.
+A passing mocked test does not prove that your live Gemini key is valid. The
+diagnostic makes a short real request to each configured Gemini model using
+the same GenerateContent API as the chat. It can use quota or incur charges;
+it sends no chat history or attached files and never prints the key. When the
+app falls back to Gemini, the chat message, history and attachments are sent
+to Google.
 The application does not run an additional autonomous agent using this
 fallback; switching providers only affects inference.
 
@@ -142,8 +150,8 @@ in the guest.
 
 ### Check Gemini
 
-Run a minimal live request to verify Gemini models configured for the optional
-`VM_Gemini_4` profile, its key and network access:
+Run a minimal live request to verify the configured Gemini models, key and
+network access using the chat's GenerateContent API:
 
 ```sh
 npm run check:gemini
@@ -288,8 +296,9 @@ Copy `.env.example` to `.env` and set `OLLAMA_HOST` and `OLLAMA_MODEL` to your
 local Ollama service and an installed model. If `.env` already exists, add or
 update those lines without replacing the file. Keep `.env` private; it is
 excluded from version control. `GEMINI_API_KEY`, `GEMINI_MODEL` and
-`GEMINI_FALLBACK_MODELS` are only for the optional `VM_Gemini_4` profile and
-Gemini diagnostic. Restart the server after changing environment variables.
+`GEMINI_FALLBACK_MODELS` also configure the optional Gemini chat provider,
+`VM_Gemini_4` and the Gemini diagnostic. Restart the server after changing
+environment variables.
 Image-generation credentials and `APP_URL` are optional and are not needed for
 the agent command protocol.
 

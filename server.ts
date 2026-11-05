@@ -5981,13 +5981,16 @@ app.post('/api/triad/message', async (req, res) => {
       .filter((attachment) => attachment.mimeType)
       .map((attachment) => ({ name: attachment.name, mimeType: attachment.mimeType!, content: attachment.content }));
     const hasImageAttachment = binaryAttachments.some((attachment) => attachment.mimeType.startsWith('image/'));
-    // Lokalna Ollama obsługuje agentów po kolei, więc limit rośnie z liczbą agentów.
-    const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS * (usesOllama() ? targetAgents.length : 1));
+    // Daj każdemu dostawcy własny limit; inaczej zawieszona Ollama zużyje
+    // cały czas i Gemini nie dostanie szansy odpowiedzieć. Lokalna Ollama
+    // obsługuje agentów po kolei, więc limit rośnie z liczbą agentów.
+    const providerTimeoutMs = LLM_CHAT_TIMEOUT_MS * (usesOllama() ? targetAgents.length : 1);
+    const deadline = AbortSignal.timeout(providerTimeoutMs * Math.max(1, llmProviders.length));
 
     const results = await Promise.all(targetAgents.map(async (agent) => {
       if (llmProviders.length > 0) {
         try {
-          const result = await generateWithChain(LLM_CHAIN_CONFIG, {
+          const result = await generateWithChain({ ...LLM_CHAIN_CONFIG, providerTimeoutMs }, {
             system: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}${hasImageAttachment ? ' Do wiadomości dołączono zdjęcie — obejrzyj je i opisz konkretnie, co faktycznie na nim widać (obiekty, osoby, światło, zmiany). Nie powtarzaj wcześniejszych odpowiedzi i nie odpowiadaj ogólnikami o systemie.' : ''}`,
             // Lokalny model: krótsza historia = mniej tokenów do przetworzenia przed odpowiedzią.
             // Przy zdjęciu pomijamy historię, by model nie powielał poprzednich, identycznych odpowiedzi.
