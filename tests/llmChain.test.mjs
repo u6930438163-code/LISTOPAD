@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   LlmChainError,
   configuredProviders,
+  preferGeminiAsFallback,
   generateWithChain,
   pickXaiChatModel,
   resetXaiModelCache,
@@ -282,4 +283,56 @@ test('rozgrzewka Ollamy wczytuje model i nie rzuca przy awarii', async () => {
   const down = mockFetch([[/api\/chat/, { respond: () => { throw new TypeError('fetch failed'); } }]]);
   const failed = await warmupOllama({ ollamaModel: 'qwen3.5:4b', fetchImpl: down.impl });
   assert.equal(failed.ok, false);
+});
+
+
+test('Gemini jest fallbackiem: zachowuje kolejność głównych silników i pozwala wyłączyć wymuszenie', () => {
+  assert.deepEqual(preferGeminiAsFallback(['gemini', 'ollama', 'xai']), ['ollama', 'xai', 'gemini']);
+  assert.deepEqual(preferGeminiAsFallback(['xai', 'gemini', 'ollama']), ['xai', 'ollama', 'gemini']);
+  assert.deepEqual(preferGeminiAsFallback(['gemini']), ['gemini']);
+  assert.deepEqual(preferGeminiAsFallback(['gemini', 'ollama'], false), ['gemini', 'ollama']);
+  assert.deepEqual(preferGeminiAsFallback(['ollama', 'xai']), ['ollama', 'xai']);
+});
+
+test('sukces głównego modelu Ollama: Gemini nie jest wywoływany', async () => {
+  const { impl, calls } = mockFetch([
+    [/127\\.0\\.0\\.1:11434\\/api\\/chat/, { respond: () => ollamaOk('Ollama obsłużyła rozmowę.') }],
+  ]);
+  const result = await generateWithChain({
+    providers: preferGeminiAsFallback(['gemini', 'ollama']),
+    geminiApiKey: 'key-unused', geminiModel: 'gemini-3.8-flash',
+    ollamaModel: 'gemma3:4b', fetchImpl: impl,
+  }, request);
+  assert.equal(result.provider, 'ollama');
+  assert.equal(result.text, 'Ollama obsłużyła rozmowę.');
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.includes('/api/chat'));
+});
+
+test('awaria głównego modelu: Gemini odpowiada dopiero jako zapasowy', async () => {
+  const { impl, calls } = mockFetch([
+    [/127\\.0\\.0\\.1:11434\\/api\\/chat/, { respond: () => json(503, { error: 'model unavailable' }) }],
+    [/generativelanguage.*gemini-3\\.8-flash:generateContent/, { respond: () => geminiOk('Gemini przejął rozmowę.') }],
+  ]);
+  const result = await generateWithChain({
+    providers: preferGeminiAsFallback(['gemini', 'ollama']),
+    geminiApiKey: 'gemini-fixture-key', geminiModel: 'gemini-3.8-flash',
+    ollamaModel: 'gemma3:4b', fetchImpl: impl,
+  }, request);
+  assert.equal(result.provider, 'gemini');
+  assert.equal(result.model, 'gemini-3.8-flash');
+  assert.equal(result.text, 'Gemini przejął rozmowę.');
+  assert.equal(result.failures.length, 1);
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0].url.includes('/api/chat'));
+  assert.ok(calls[1].url.includes('generativelanguage.googleapis.com'));
+  assert.equal(calls[1].headers['x-goog-api-key'], 'gemini-fixture-key');
+  assert.equal(calls[1].body.systemInstruction.parts[0].text, request.system);
+});
+
+test('brak klucza Gemini: fallback nie jest uaktywniany', () => {
+  assert.deepEqual(configuredProviders({
+    providers: preferGeminiAsFallback(['gemini', 'ollama']),
+    geminiApiKey: '',
+  }), ['ollama']);
 });
