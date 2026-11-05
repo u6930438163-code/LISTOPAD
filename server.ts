@@ -6243,11 +6243,11 @@ app.get('/api/mcp/sse', (req, res) => {
 // GPT Actions: consult the same models/personas without entering auto-execution routes.
 registerGptActions(app, {
   providers: () => configuredProviders(LLM_CHAIN_CONFIG),
-  chat: async (agent: string, message: string, signal: AbortSignal) => {
+  chat: async (agent: string, message: string, signal: AbortSignal, history: { role: 'user' | 'assistant'; text: string }[] = []) => {
     const key = (agent === 'Aria' ? 'si_1' : agent) as ChatAgentName;
     return generateWithChain(LLM_CHAIN_CONFIG, {
       system: `${CHAT_AGENT_MISSIONS[key]} Odpowiadasz przez GPT Actions jako konsultant. Ten kanał nie ma narzędzi do wykonywania poleceń ani zapisu plików. Podawaj analizy i propozycje kodu; nie deklaruj wykonania zmian. Korzystaj wyłącznie z kontekstu przekazanego w wiadomości.`,
-      history: [],
+      history,
       message,
     }, signal);
   },
