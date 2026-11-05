@@ -19,6 +19,7 @@ import {
   DEFAULT_XAI_BASE_URL,
   LlmChainError,
   configuredProviders,
+  preferGeminiAsFallback,
   generateWithChain,
   type LlmChainConfig,
   type LlmTurn,
@@ -79,7 +80,7 @@ if (fs.existsSync('.env.local')) {
 
 const execFileAsync = promisify(execFile);
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
-const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite').trim();
+const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
 const GEMINI_FALLBACK_MODELS = process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.8-flash,gemini-flash-latest,gemini-3.7-flash';
 const geminiClient = GEMINI_API_KEY
   ? new GoogleGenAI({
@@ -98,7 +99,7 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const FALLBACK_NLP_BASE_URL = (process.env.FALLBACK_NLP_BASE_URL || 'https://api.groq.com/openai/v1').trim().replace(/\/+$/, '');
 const FALLBACK_NLP_API_KEY = (process.env.FALLBACK_NLP_API_KEY || '').trim();
 const FALLBACK_NLP_MODEL = (process.env.FALLBACK_NLP_MODEL || 'llama-3.3-70b-versatile').trim();
-// Czat triady: Gemini → xAI (Grok) → without_nlp. Wartości-zaślepki z .env.example są ignorowane.
+// Czat triady: istniejące silniki (Ollama / xAI) → Gemini awaryjnie. Wartości-zaślepki nie są kluczami.
 const realKey = (value: string | undefined) => {
   const key = (value || '').trim();
   return /^(YOUR|MY)_/i.test(key) ? '' : key;
@@ -120,11 +121,16 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   ollamaNumCtx: Number(process.env.OLLAMA_NUM_CTX) || 4096,
   ollamaNumPredict: Number(process.env.OLLAMA_NUM_PREDICT) || 0,
   ollamaNumThread: Number(process.env.OLLAMA_NUM_THREAD) || 0,
-  // Zawsze dołączamy gemini, gdy klucz GEMINI_API_KEY jest dostępny w AI Studio
-  providers: (process.env.LLM_PROVIDERS || (realKey(GEMINI_API_KEY) ? 'gemini,ollama,xai' : 'ollama'))
-    .split(',')
-    .map((name) => name.trim().toLowerCase())
-    .filter((name): name is 'gemini' | 'xai' | 'ollama' => name === 'gemini' || name === 'xai' || name === 'ollama'),
+  // GEMINI_AS_FALLBACK=on (domyślnie): zachowaj priorytety Ollama/xAI,
+  // ale Gemini uruchamiaj dopiero gdy wszystkie wcześniejsze silniki zawiodą.
+  // GEMINI_AS_FALLBACK=off pozwala jawnie wskazać kolejność w LLM_PROVIDERS.
+  providers: preferGeminiAsFallback(
+    (process.env.LLM_PROVIDERS || 'ollama,xai,gemini')
+      .split(',')
+      .map((name) => name.trim().toLowerCase())
+      .filter((name): name is 'gemini' | 'xai' | 'ollama' => name === 'gemini' || name === 'xai' || name === 'ollama'),
+    !/^(0|off|false|no|nie)$/i.test((process.env.GEMINI_AS_FALLBACK || 'on').trim()),
+  ),
 };
 // Awaryjny silnik without_nlp, gdy modele zawiodą — domyślnie wyłączony (CHAT_LOCAL_FALLBACK=on włącza).
 const CHAT_LOCAL_FALLBACK = /^(1|on|true|yes|tak)$/i.test((process.env.CHAT_LOCAL_FALLBACK || 'off').trim());
@@ -5950,7 +5956,7 @@ app.post('/api/triad/message', async (req, res) => {
     }
   }
 
-  // CZAT TRIADY: swobodna rozmowa — Gemini → xAI (Grok) → Ollama (lokalny model) → without_nlp.
+  // CZAT TRIADY: swobodna rozmowa — Ollama / xAI (według konfiguracji) → Gemini fallback → without_nlp.
   const llmProviders = configuredProviders(LLM_CHAIN_CONFIG);
   if (llmProviders.length === 0 && !CHAT_LOCAL_FALLBACK) {
     return sendChatError(req, res, 503, 'Brak skonfigurowanego modelu czatu. Ustaw LLM_PROVIDERS="ollama" i uruchom Ollamę albo skonfiguruj dostawcę API w sekretach serwera.');
