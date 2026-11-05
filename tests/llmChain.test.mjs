@@ -296,7 +296,7 @@ test('Gemini jest fallbackiem: zachowuje kolejność głównych silników i pozw
 
 test('sukces głównego modelu Ollama: Gemini nie jest wywoływany', async () => {
   const { impl, calls } = mockFetch([
-    [/127\\.0\\.0\\.1:11434\\/api\\/chat/, { respond: () => ollamaOk('Ollama obsłużyła rozmowę.') }],
+    [/127\.0\.0\.1:11434\/api\/chat/, { respond: () => ollamaOk('Ollama obsłużyła rozmowę.') }],
   ]);
   const result = await generateWithChain({
     providers: preferGeminiAsFallback(['gemini', 'ollama']),
@@ -311,8 +311,8 @@ test('sukces głównego modelu Ollama: Gemini nie jest wywoływany', async () =>
 
 test('awaria głównego modelu: Gemini odpowiada dopiero jako zapasowy', async () => {
   const { impl, calls } = mockFetch([
-    [/127\\.0\\.0\\.1:11434\\/api\\/chat/, { respond: () => json(503, { error: 'model unavailable' }) }],
-    [/generativelanguage.*gemini-3\\.8-flash:generateContent/, { respond: () => geminiOk('Gemini przejął rozmowę.') }],
+    [/127\.0\.0\.1:11434\/api\/chat/, { respond: () => json(503, { error: 'model unavailable' }) }],
+    [/generativelanguage.*gemini-3\.8-flash:generateContent/, { respond: () => geminiOk('Gemini przejął rozmowę.') }],
   ]);
   const result = await generateWithChain({
     providers: preferGeminiAsFallback(['gemini', 'ollama']),
