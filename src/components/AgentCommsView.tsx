@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { DataStore, OPERATOR_NAME } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS, AgentProfile } from '../kernel/agents';
 import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Paperclip, Send, X } from 'lucide-react';
 import { FormattedMessage } from './FormattedMessage';
 import { AgentConversationToggle } from './AgentConversationToggle';
+import { AgentActivityPanel } from './AgentActivityPanel';
 import {
   ASTYRIA_MISSION_ACTIONS,
   ASTYRIA_MISSION_LABELS,
@@ -67,6 +68,11 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [showProtocolTools, setShowProtocolTools] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const followLatestMessagesRef = useRef(true);
+  // Podgląd pracy agentów rośnie na żywo — przewijamy za nim, jeśli użytkownik jest na dole czatu.
+  const followLatestActivity = useCallback(() => {
+    const chatScroll = chatScrollRef.current;
+    if (chatScroll && followLatestMessagesRef.current) chatScroll.scrollTop = chatScroll.scrollHeight;
+  }, []);
   const transmissionStatus = sendError
     ? { label: 'BŁĄD TRANSMISJI', color: 'rose' }
     : isLoading
@@ -428,11 +434,13 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             );
           })}
 
+          <AgentActivityPanel onActivity={followLatestActivity} />
+
           {isLoading && (
             <div className="flex flex-wrap items-center justify-between gap-2 text-slate-300 p-3 bg-slate-900/70 rounded-lg border border-slate-800">
               <div className="flex items-center gap-2">
                 <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-                <span className="text-xs">Przetwarzanie transmisji przez węzły (Alex, Astyria, Aurelius, Aria)...</span>
+                <span className="text-xs">Agenci pracują — postęp widać na żywo powyżej.</span>
               </div>
               {onForceSync && (
                 <button

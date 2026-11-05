@@ -56,6 +56,7 @@ import {
   MAX_CHAT_MESSAGE_LENGTH,
   validateChatAttachments,
 } from './src/kernel/chatAttachments';
+import { ActivityHub, ActivityRunHandle, formatDuration } from './src/kernel/agentActivity';
 import {
   ConversationAgent,
   ConversationSettings,
@@ -5011,7 +5012,9 @@ async function tryExecuteChatCommand(message: string): Promise<ChatExecResult | 
   return null;
 }
 
-async function autoExecuteAgentReplyCommands(replyText: string): Promise<string | null> {
+type AgentCommandReporter = (command: string, output: string | null) => void;
+
+async function autoExecuteAgentReplyCommands(replyText: string, report?: AgentCommandReporter): Promise<string | null> {
   const cleaned = cleanAgentReplyText(replyText);
 
   // /propose write-file <app> <plik> + treść pliku do końca odpowiedzi (po oczyszczeniu)
@@ -5019,11 +5022,16 @@ async function autoExecuteAgentReplyCommands(replyText: string): Promise<string 
   if (writeFileMatch) {
     const parsed = parseChatApprovalCommand(`/propose write-file ${writeFileMatch[1]} ${writeFileMatch[2]}\n${writeFileMatch[3]}`);
     if (!parsed || parsed.type !== 'propose') return null;
+    const command = `/propose write-file ${writeFileMatch[1]} ${writeFileMatch[2]}`;
+    report?.(command, null);
     try {
       const result = await executeApprovedChatAction(parsed.action);
+      report?.(command, result.message);
       return result.message;
     } catch (err: any) {
-      return `Błąd auto-exec write-file: ${err?.message || err}`;
+      const failure = `Błąd auto-exec write-file: ${err?.message || err}`;
+      report?.(command, failure);
+      return failure;
     }
   }
 
@@ -5039,15 +5047,20 @@ async function autoExecuteAgentReplyCommands(replyText: string): Promise<string 
         // Niepełna/przykładowa składnia — pomiń bez zaśmiecania czatu komunikatem.
         continue;
       }
+      report?.(cmd, null);
       try {
         const result = await executeApprovedChatAction(parsed.action);
         results.push(`$ ${cmd}\n${result.message}`);
+        report?.(cmd, result.message);
       } catch (err: any) {
         results.push(`$ ${cmd}\n[Błąd]: ${err?.message || err}`);
+        report?.(cmd, `[Błąd]: ${err?.message || err}`);
       }
     } else {
+      report?.(cmd, null);
       const execResult = await tryExecuteChatCommand(cmd);
       if (execResult) results.push(`$ ${cmd}\n${execResult.output}`);
+      report?.(cmd, execResult ? execResult.output : '(polecenie nie zostało rozpoznane — pominięto)');
     }
   }
   return results.length > 0 ? results.join('\n\n') : null;
@@ -5703,6 +5716,50 @@ app.post('/api/agents/inbox/read', (req, res) => {
   res.json({ success: true });
 });
 
+// --- AKTYWNOŚĆ AGENTÓW NA ŻYWO: co robią agenci (kroki, polecenia, tekst w trakcie pisania) ---
+const activityHub = new ActivityHub();
+
+function chatTargetLabel(target: string): string {
+  return target === 'triad' ? 'Triady' : agentDisplayName(target);
+}
+
+/** Zamyka przebieg razem z odpowiedzią HTTP (sukces, błąd albo zerwane połączenie). */
+function bindActivityRunToResponse(run: ActivityRunHandle, res: express.Response): void {
+  const originalJson = res.json.bind(res);
+  res.json = ((body: any) => {
+    if (!run.finished) {
+      const ok = res.statusCode < 400 && body?.success !== false;
+      run.finish(ok ? 'done' : 'error', ok ? undefined : String(body?.error || `HTTP ${res.statusCode}`));
+    }
+    return originalJson(body);
+  }) as typeof res.json;
+  res.on('close', () => {
+    if (!run.finished) run.finish('error', 'Połączenie zostało przerwane przed odpowiedzią.');
+  });
+}
+
+app.get('/api/agents/activity', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ runs: activityHub.list() });
+});
+
+app.get('/api/agents/activity/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  res.write(`event: snapshot\ndata: ${JSON.stringify({ runs: activityHub.list() })}\n\n`);
+  const unsubscribe = activityHub.subscribe((run) => {
+    res.write(`event: run\ndata: ${JSON.stringify(run)}\n\n`);
+  });
+  const keepAlive = setInterval(() => res.write(': ping\n\n'), 20_000);
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    unsubscribe();
+  });
+});
+
 // --- SWOBODNA ROZMOWA AGENTÓW: agenci piszą do siebie i do Taty z własnej inicjatywy ---
 // Agent dostaje okazję, ale może wybrać milczenie ([CISZA]). Wiadomości są wyłącznie tekstowe:
 // polecenia /exec i /propose nie są w nich wykonywane, bo nikt ich na bieżąco nie nadzoruje.
@@ -5768,6 +5825,7 @@ async function runAgentConversationTurn(force = false): Promise<void> {
 
   agentConversationState.running = true;
   let speaker: ConversationAgent | null = null;
+  let activity: ActivityRunHandle | null = null;
   try {
     const state = await getPythonKernelState(true);
     const history: Array<{ agent: string; tekst: string }> = Array.isArray(state?.store?.chat_history) ? state.store.chat_history : [];
@@ -5778,26 +5836,46 @@ async function runAgentConversationTurn(force = false): Promise<void> {
         ? `Agenci napisali ${settings.maxTurnsWithoutOperator} wiadomości bez odpowiedzi Taty — czekają na Ciebie.`
         : 'Wszyscy agenci odpoczywają.');
     }
+    const speakerName = agentDisplayName(speaker);
+    activity = activityHub.startRun('conversation', `${speakerName} może się odezwać z własnej inicjatywy`);
+    activity.step('think', { title: `${speakerName} zastanawia się, czy coś napisać`, agent: speaker, status: 'running' });
+    const thinkingStarted = Date.now();
     const result = await generateWithChain(LLM_CHAIN_CONFIG, {
+      onPartialText: (text) => activity?.partial(speaker as string, text),
+      onProviderEvent: (event) => {
+        if (event.type === 'start') activity?.step('think', { detail: `Model: ${event.provider}` });
+        else activity?.step(`fail-${event.provider}`, { title: `Dostawca ${event.provider} nie odpowiedział`, status: 'error', detail: event.detail });
+      },
       system: `${CHAT_AGENT_MISSIONS[speaker]} ${buildSpontaneousInstructions(speaker)} ${AGENT_CONVERSATION_BOUNDARIES}`,
       history: [],
       message: `Ostatnie wiadomości we wspólnym czacie:\n\n${buildConversationTranscript(history) || '(czat jest pusty)'}\n\nCzy chcesz teraz coś napisać? Jeśli nie — odpowiedz ${'[CISZA]'}.`,
       maxOutputTokens: 600,
     }, AbortSignal.timeout(AGENT_CONVERSATION_TIMEOUT_MS));
+    activity.step('think', { title: `${speakerName} przemyślał(a) sprawę`, status: 'done', detail: `${result.provider}:${result.model} · ${formatDuration(Date.now() - thinkingStarted)}` });
     if (operatorChatRequestsInFlight > 0) {
+      activity.finish('done', 'Tata zaczął pisać — wiadomość agenta odłożona.');
       return finishAgentConversationTurn('skipped', 'Tata zaczął pisać — wiadomość agenta odłożona.', speaker);
     }
     const parsed = parseSpontaneousReply(cleanAgentReplyText(result.text), speaker);
     agentConversationLastSpokeAt[speaker] = Date.now();
     if (!parsed || isRepetition(history, speaker, parsed.text)) {
+      activity.step('silence', { title: `${speakerName} postanowił(a) nic nie pisać`, status: 'info' });
+      activity.finish('done');
       return finishAgentConversationTurn('silence', `${agentDisplayName(speaker)} postanowił(a) nic nie pisać.`, speaker);
     }
+    if (parsed.removedCommands) {
+      activity.step('commands', { title: 'Pominięto polecenia z wiadomości', status: 'info', detail: 'W spontanicznej rozmowie agenci nie wykonują poleceń.' });
+    }
+    activity.step('save', { title: `Zapisuję wiadomość do: ${parsed.recipient === 'si_1' ? 'Aria' : parsed.recipient}`, status: 'running' });
     await runPythonKernel(['--action', 'batch_msg', '--msgs_json', JSON.stringify([{ agent: speaker, tekst: formatSpontaneousEntry(parsed) }])]);
     await getPythonKernelState(true);
+    activity.step('save', { status: 'done' });
+    activity.finish('done');
     agentConversationState.messagesSent += 1;
     finishAgentConversationTurn('message', `${agentDisplayName(speaker)} → ${parsed.recipient === 'si_1' ? 'Aria' : parsed.recipient} (${result.provider}:${result.model}).`, speaker);
   } catch (error: any) {
     const detail = error instanceof LlmChainError ? error.failures.join(' | ') : String(error?.message || error);
+    activity?.finish('error', detail);
     finishAgentConversationTurn('error', detail.slice(0, 500), speaker);
   } finally {
     agentConversationState.running = false;
@@ -5928,6 +6006,13 @@ app.post('/api/triad/message', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Nieznany agent czatu.' });
   }
   const target = requestedTarget as ChatTarget;
+  const activityRun = activityHub.startRun('chat', `Wiadomość od Taty do ${chatTargetLabel(target)}`);
+  bindActivityRunToResponse(activityRun, res);
+  activityRun.step('receive', {
+    title: 'Odebrano wiadomość',
+    status: 'done',
+    detail: `${message.trim().slice(0, 160)}${message.trim().length > 160 ? '…' : ''}${attachments.length ? ` · załączniki: ${attachments.length}` : ''}`,
+  });
   const persistedMessage = approvalCommand?.type === 'propose' && approvalCommand.action.type === 'write-file'
     ? message
     : displayMessage;
@@ -6038,6 +6123,12 @@ app.post('/api/triad/message', async (req, res) => {
   if (attachments.length === 0) {
     const execResult = await tryExecuteChatCommand(message);
     if (execResult) {
+      activityRun.step('operator-exec', {
+        title: 'Wykonano polecenie Taty',
+        status: 'done',
+        command: message.trim(),
+        output: execResult.output,
+      });
       const execAgents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
       const leadAgent = execAgents[0];
       const execReplies = Object.fromEntries(execAgents.map((agent) => [
@@ -6064,6 +6155,7 @@ app.post('/api/triad/message', async (req, res) => {
   if (attachments.length === 0) {
     const bestFit = await tryBestFitReply(message);
     if (bestFit) {
+      activityRun.step('best-fit', { title: 'Odpowiedź z bieżących danych systemu (bez modelu)', status: 'done', detail: bestFit.id });
       const fitAgents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
       const answering = fitAgents.includes(bestFit.owner) ? bestFit.owner : fitAgents[0];
       const fitReplies = Object.fromEntries(fitAgents.map((agent) => [
@@ -6116,9 +6208,20 @@ app.post('/api/triad/message', async (req, res) => {
     const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS * (usesOllama() ? targetAgents.length : 1));
 
     const results = await Promise.all(targetAgents.map(async (agent) => {
+      const agentName = agentDisplayName(agent);
+      const agentStarted = Date.now();
       if (llmProviders.length > 0) {
+        activityRun.step(`agent-${agent}`, { title: `${agentName} myśli…`, agent, status: 'running' });
         try {
           const result = await generateWithChain(LLM_CHAIN_CONFIG, {
+            onPartialText: (text) => {
+              activityRun.step(`agent-${agent}`, { title: `${agentName} pisze odpowiedź…` });
+              activityRun.partial(agent, text);
+            },
+            onProviderEvent: (event) => {
+              if (event.type === 'start') activityRun.step(`agent-${agent}`, { detail: `Model: ${event.provider}` });
+              else activityRun.step(`agent-${agent}-fail-${event.provider}`, { title: `${agentName}: dostawca ${event.provider} nie odpowiedział`, agent, status: 'error', detail: event.detail });
+            },
             system: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}${hasImageAttachment ? ' Do wiadomości dołączono zdjęcie — obejrzyj je i opisz konkretnie, co faktycznie na nim widać (obiekty, osoby, światło, zmiany). Nie powtarzaj wcześniejszych odpowiedzi i nie odpowiadaj ogólnikami o systemie.' : ''}`,
             // Lokalny model: krótsza historia = mniej tokenów do przetworzenia przed odpowiedzią.
             // Przy zdjęciu pomijamy historię, by model nie powielał poprzednich, identycznych odpowiedzi.
@@ -6129,10 +6232,12 @@ app.post('/api/triad/message', async (req, res) => {
           if (result.failures.length) {
             pushSystemLog('warn', 'KERNEL', `[CZAT] ${agent}: ${result.failures.join(' | ')} — odpowiedział ${result.provider} (${result.model}).`);
           }
+          activityRun.step(`agent-${agent}`, { title: `${agentName} odpowiedział(a)`, status: 'done', detail: `${result.provider}:${result.model} · ${formatDuration(Date.now() - agentStarted)}` });
           return { agent, text: result.text, engine: `${result.provider}:${result.model}`, llm: true, error: undefined as string | undefined };
         } catch (error: any) {
           const failures = error instanceof LlmChainError ? error.failures.join(' | ') : String(error?.message || error);
           pushSystemLog('warn', 'KERNEL', `[CZAT] ${agent}: modele niedostępne (${failures})${CHAT_LOCAL_FALLBACK ? ' — fallback without_nlp.' : '.'}`);
+          activityRun.step(`agent-${agent}`, { title: `${agentName}: żaden model nie odpowiedział`, status: 'error', detail: failures });
           if (!CHAT_LOCAL_FALLBACK) {
             return { agent, text: '', engine: 'error', llm: false, error: `${agent}: ${failures}` };
           }
@@ -6141,6 +6246,7 @@ app.post('/api/triad/message', async (req, res) => {
       const localCtx = buildSystemContext(store, Array.isArray(store.update_history) ? store.update_history.length : 0);
       const localAgentName = agent === 'si_1' ? 'si_1' : agent;
       const localReply = generateLocalReply(localAgentName as any, cleanMessage, localCtx).reply;
+      activityRun.step(`agent-${agent}-local`, { title: `${agentName} odpowiada lokalnym silnikiem (bez modelu AI)`, agent, status: 'info' });
       const offlinePrefix = llmProviders.length > 0 ? '[Lokalna rozmowa · API niedostępne] ' : '';
       return {
         agent,
@@ -6164,7 +6270,18 @@ app.post('/api/triad/message', async (req, res) => {
       // AUTO-EXEC (ROOT UNLIMITED): polecenia /propose i /exec w odpowiedziach modeli wykonują się natychmiast.
       if (result.llm) {
         try {
-          const execNote = await autoExecuteAgentReplyCommands(text);
+          let commandIndex = 0;
+          const commandKeys = new Map<string, string>();
+          const execNote = await autoExecuteAgentReplyCommands(text, (command, output) => {
+            let key = commandKeys.get(command);
+            if (!key || output === null) {
+              key = `cmd-${result.agent}-${(commandIndex += 1)}`;
+              commandKeys.set(command, key);
+            }
+            activityRun.step(key, output === null
+              ? { title: `${agentDisplayName(result.agent)} wykonuje polecenie`, agent: result.agent, status: 'running', command }
+              : { title: `${agentDisplayName(result.agent)} wykonał(a) polecenie`, status: /^\[?Błąd/.test(output) ? 'error' : 'done', output });
+          });
           if (execNote) {
             text = `${text}\n\n[AUTO-EXEC · ROOT UNLIMITED] Wykonano natychmiast:\n\`\`\`\n${execNote.slice(0, 2000)}\n\`\`\``;
             pushSystemLog('healed', 'KERNEL', `[AUTO-EXEC] Polecenie z odpowiedzi agenta ${result.agent} wykonane natychmiast.`);
@@ -6183,6 +6300,7 @@ app.post('/api/triad/message', async (req, res) => {
       ...replies.map(([agent, text]) => ({ agent, tekst: text })),
     ];
 
+    activityRun.step('save', { title: 'Zapisuję rozmowę w historii czatu', status: 'running' });
     await runPythonKernel([
       '--action', 'batch_msg',
       '--msgs_json', JSON.stringify(transcript),
@@ -6191,6 +6309,7 @@ app.post('/api/triad/message', async (req, res) => {
     if (!hasPersistedAgentProtocolTranscript(finalState, transcript, previousChatHistoryLength)) {
       throw new Error('Jądro nie potwierdziło zapisu wiadomości i odpowiedzi agentów.');
     }
+    activityRun.step('save', { title: 'Zapisano rozmowę w historii czatu', status: 'done' });
     return res.json({
       success: true,
       agent: target,
