@@ -443,7 +443,7 @@ function loadGitHubCredentials(): { username?: string; repoName?: string; token?
       return JSON.parse(fs.readFileSync(GITHUB_CRED_PATH, 'utf-8'));
     }
   } catch {}
-  return { username: 'u6930438163-code', repoName: 'AI_Studio_BastillaOS' };
+  return { username: 'u6930438163-code', repoName: 'LISTOPAD' };
 }
 
 function saveGitHubCredentials(username: string, repoName: string, token: string) {
@@ -471,7 +471,7 @@ app.get('/api/github/status', (_req, res) => {
   const creds = loadGitHubCredentials();
   return res.json({
     username: creds.username || 'u6930438163-code',
-    repoName: creds.repoName || 'AI_Studio_BastillaOS',
+    repoName: creds.repoName || 'LISTOPAD',
     hasToken: Boolean(creds.token),
     maskedToken: creds.token ? `${creds.token.slice(0, 6)}...` : '',
     syncedModules: getSyncedModulesList()
@@ -540,7 +540,7 @@ app.post('/api/github/export', async (req, res) => {
 app.post('/api/github/pull', async (req, res) => {
   const saved = loadGitHubCredentials();
   const username = (req.body.username || saved.username || 'u6930438163-code').trim();
-  const repoName = (req.body.repoName || saved.repoName || 'AI_Studio_BastillaOS').trim();
+  const repoName = (req.body.repoName || saved.repoName || 'LISTOPAD').trim();
   const token = (req.body.token || saved.token || '').trim();
 
   if (token) {
