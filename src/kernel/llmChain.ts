@@ -31,6 +31,13 @@ export interface LlmRequest {
   attachments?: LlmBinaryAttachment[];
   maxOutputTokens?: number;
   temperature?: number;
+  /**
+   * Opcjonalny podgląd na żywo: wywoływany z dotychczasowym tekstem odpowiedzi w miarę jej
+   * powstawania (obecnie strumieniuje Ollama; pozostali dostawcy zwracają całość naraz).
+   */
+  onPartialText?: (textSoFar: string) => void;
+  /** Opcjonalne powiadomienia o kolejnych próbach dostawców w łańcuchu. */
+  onProviderEvent?: (event: { type: 'start' | 'error'; provider: LlmProvider; detail?: string }) => void;
 }
 
 export interface LlmChainConfig {
@@ -335,6 +342,52 @@ export function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/i, '').trim();
 }
 
+/** Jak stripThinking, ale dla niedokończonego tekstu: ukrywa też otwarty, jeszcze niezamknięty blok <think>. */
+export function stripPartialThinking(text: string): string {
+  const closed = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  const open = closed.search(/<think>/i);
+  return (open >= 0 ? closed.slice(0, open) : closed).trim();
+}
+
+/** Czyta strumień NDJSON z /api/chat Ollamy i zwraca pełną treść, raportując postęp. */
+async function readOllamaStream(response: Response, onPartialText: (textSoFar: string) => void): Promise<string> {
+  if (!response.body) {
+    const data: any = await response.json();
+    return typeof data?.message?.content === 'string' ? data.message.content : '';
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let lastReported = '';
+  const consume = (line: string) => {
+    if (!line.trim()) return;
+    let chunk: any;
+    try {
+      chunk = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (typeof chunk?.error === 'string') throw new LlmProviderError('ollama', 502, `Ollama: ${chunk.error}`);
+    if (typeof chunk?.message?.content === 'string') content += chunk.message.content;
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    lines.forEach(consume);
+    const visible = stripPartialThinking(content);
+    if (visible && visible !== lastReported) {
+      lastReported = visible;
+      onPartialText(visible);
+    }
+    if (done) break;
+  }
+  consume(buffer + decoder.decode());
+  return content;
+}
+
 /** Wybiera model czatu z listy pobranych modeli Ollamy (bez modeli embedding). */
 export function pickOllamaChatModel(models: Array<{ name: string; size?: number }>): string | null {
   const chat = models.filter((model) => model.name && !/embed|bge|minilm|nomic/i.test(model.name));
@@ -445,7 +498,7 @@ export async function generateOllama(
         body: JSON.stringify({
           model,
           messages,
-          stream: false,
+          stream: Boolean(request.onPartialText),
           keep_alive: parseKeepAlive(config.ollamaKeepAlive),
           ...(disableThinking ? { think: false } : {}),
           options: ollamaOptions(config, request),
@@ -464,8 +517,10 @@ export async function generateOllama(
       const detailText = details ? ` Szczegóły: ${details}` : '';
       throw new LlmProviderError('ollama', response.status, `${describeStatus('ollama', response.status)} [${model}]${hint}${detailText}`);
     }
-    const data: any = await response.json();
-    const text = stripThinking(typeof data?.message?.content === 'string' ? data.message.content : '');
+    const raw = request.onPartialText
+      ? await readOllamaStream(response, request.onPartialText)
+      : await response.json().then((data: any) => (typeof data?.message?.content === 'string' ? data.message.content : ''));
+    const text = stripThinking(raw);
     if (!text) throw new LlmProviderError('ollama', 502, `Ollama: pusta odpowiedź [${model}]`);
     return text;
   };
@@ -549,6 +604,7 @@ export async function generateWithChain(
     const timer = typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0
       ? setTimeout(() => controller.abort(), timeout)
       : undefined;
+    request.onProviderEvent?.({ type: 'start', provider });
     try {
       const { text, model } = provider === 'gemini'
         ? await generateGemini(config, request, attemptSignal)
@@ -557,9 +613,11 @@ export async function generateWithChain(
         : await generateOllama(config, request, attemptSignal);
       return { text, provider, model, failures };
     } catch (error: any) {
-      failures.push(controller.signal.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError'
+      const failure = controller.signal.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError'
         ? `${provider}: przekroczono czas odpowiedzi`
-        : String(error?.message || error));
+        : String(error?.message || error);
+      failures.push(failure);
+      request.onProviderEvent?.({ type: 'error', provider, detail: failure });
     } finally {
       if (timer) clearTimeout(timer);
     }

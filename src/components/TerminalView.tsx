@@ -340,7 +340,16 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onSendProtocol,
   onExecutePythonCommand,
 }) => {
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('svl_terminal_history_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.slice(-100);
+      }
+    } catch {}
+    return [];
+  });
   const [antiMirrorActive, setAntiMirrorActive] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem('svl_antimirror_active');
@@ -357,11 +366,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       localStorage.setItem('svl_antimirror_active', JSON.stringify(nextVal));
     } catch {}
   };
-  const [logs, setLogs] = useState<LogEntry[]>([
-    {
-      id: 'init-1',
-      type: 'banner',
-      content: `================================================================================
+  const initialBannerLog: LogEntry = {
+    id: 'init-1',
+    type: 'banner',
+    content: `================================================================================
        SVL KERNEL v${SYS_VERSION} | DETERMINISTYCZNY INTERFEJS POLECEŃ
 ================================================================================
 Dowódca infrastruktury: Alex (Ring-0 Root Control)
@@ -370,9 +378,18 @@ Silnik poleceń:         AKTYWNY (jawny protokół i komendy jądra)
 Samonaprawa z logów:    WŁĄCZONA (ACTIVE_MONITORING)
 Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
 ================================================================================`,
-      timestamp: 'START'
-    }
-  ]);
+    timestamp: 'START',
+  };
+  const [logs, setLogs] = useState<LogEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem('svl_terminal_logs_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(-150);
+      }
+    } catch {}
+    return [initialBannerLog];
+  });
 
   const DEFAULT_TERMINAL_CMDS = [
     'root status',
@@ -425,7 +442,16 @@ Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
 
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'auto' });
-  }, [logs.length]);
+    try {
+      localStorage.setItem('svl_terminal_logs_v1', JSON.stringify(logs.slice(-150)));
+    } catch {}
+  }, [logs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('svl_terminal_history_v1', JSON.stringify(history.slice(-100)));
+    } catch {}
+  }, [history]);
 
   const addLog = (content: string, type: LogEntry['type'] = 'output') => {
     const now = new Date();
@@ -438,7 +464,7 @@ Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
     if (!rawCmd) return;
 
     // Save history
-    setHistory((prev) => [...prev, rawCmd]);
+    setHistory((prev) => [...prev.slice(-99), rawCmd]);
 
     addLog(`$ ${rawCmd}`, 'input');
 
@@ -541,6 +567,9 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
 
       case 'clear':
         setLogs([]);
+        try {
+          localStorage.removeItem('svl_terminal_logs_v1');
+        } catch {}
         break;
 
       case 'export': {
@@ -612,7 +641,28 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
       case 'bump':
       case 'config':
       case 'history':
-      case 'clear_chat': {
+      case 'clear_chat':
+      case 'list':
+      case 'list-apps':
+      case 'list-db':
+      case 'create-app':
+      case 'create-db':
+      case 'createdb':
+      case 'build':
+      case 'run':
+      case 'start':
+      case 'stop':
+      case 'inspect':
+      case 'app':
+      case 'apps':
+      case 'without_nlp':
+      case 'euler':
+      case 'fourier':
+      case 'mission':
+      case 'propose':
+      case 'approve':
+      case 'reject':
+      case 'proposals': {
         const execute = onExecutePythonCommandRef.current;
         if (!execute) { addLog('Brak połączenia z terminalem serwera.', 'error'); break; }
         try {
@@ -623,8 +673,21 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
       }
 
       default: {
-        // Przywrócona konsola Binarnej Hiperprzestrzeni: każde polecenie → wektor 128-bit + NLP (OpenRouter) + komendy jądra
-        addLog('[HYPEROS] Przetwarzanie w Binarnej Hiperprzestrzeni (128-bit) + NLP...', 'system');
+        // Najpierw wykonaj polecenie na serwerze (/api/kernel/command lub /api/hyperos/console)
+        const pyCmd = onExecutePythonCommandRef.current;
+        if (rawCmd.startsWith('/exec ') || rawCmd.startsWith('!') || rawCmd.startsWith('$ ')) {
+          if (pyCmd) {
+            try {
+              const res = await pyCmd(rawCmd);
+              addLog(res.output, 'output');
+              break;
+            } catch (err: any) {
+              addLog(`Błąd wykonania polecenia: ${err.message}`, 'error');
+              break;
+            }
+          }
+        }
+        addLog('[HYPEROS] Przetwarzanie polecenia w Binarnej Hiperprzestrzeni (128-bit) + wykonanie jądra...', 'system');
         try {
           const res = await fetch('/api/hyperos/console', {
             method: 'POST',
@@ -637,6 +700,9 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
           }
           if (data.kernelOutput) {
             addLog(data.kernelOutput, 'output');
+          }
+          if (data.state?.store && onUpdateDataStoreRef.current) {
+            onUpdateDataStoreRef.current(() => data.state.store);
           }
           addLog(`[HYPEROS 128-bit] intencja: ${data.intent} · podobieństwo: ${(data.score * 100).toFixed(1)}% · NLP: ${data.nlpProvider}`, 'system');
           addLog(data.reply, 'success');

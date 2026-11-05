@@ -30,7 +30,11 @@ export function extractAgentCommands(replyText: string): string[] {
   const anglePlaceholder = /<[^<>\n]+>/;
   const bracketPlaceholder = /\[[^\][\n]*\]/;
   for (const line of cleaned.split('\n')) {
-    const trimmedLine = line.trim();
+    const trimmedLine = line
+      .trim()
+      .replace(/^(?:[-*+]\s+)?(?:\*\*|\*|`|_)+/, '')
+      .replace(/(?:\*\*|\*|`|_)+$/, '')
+      .trim();
     if (!trimmedLine) continue;
     const slashCmd = trimmedLine.match(/^\/\s*(propose|exec)\s+(.+)$/);
     let cmd: string | null = null;

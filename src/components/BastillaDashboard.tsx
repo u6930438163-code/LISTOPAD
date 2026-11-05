@@ -31,6 +31,7 @@ import {
   ChatAttachment,
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_MESSAGE_LENGTH,
+  isChatImageMimeType,
   readChatAttachmentFile,
   validateChatAttachments,
 } from '../kernel/chatAttachments';
@@ -296,8 +297,12 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                 <ul aria-label="Załączone pliki" className="mb-2 flex flex-wrap gap-1.5">
                   {chatAttachments.map((file, index) => (
                     <li key={`${file.name}-${index}`} className="flex items-center gap-1 rounded border border-cyan-500/30 bg-cyan-950/40 px-2 py-1 text-[10px] text-cyan-100">
-                      <FileText className="h-3 w-3" />
-                      <span>{file.name}</span>
+                      {isChatImageMimeType(file.mimeType) ? (
+                        <img src={`data:${file.mimeType};base64,${file.content}`} alt="" className="h-8 w-8 rounded object-cover" />
+                      ) : (
+                        <FileText className="h-3 w-3" />
+                      )}
+                      <span className="max-w-[10rem] truncate">{file.name}</span>
                       <button
                         type="button"
                         onClick={() => setChatAttachments((current) => current.filter((_, fileIndex) => fileIndex !== index))}
@@ -333,7 +338,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   disabled={isTerminalLoading}
                   className="min-w-0 flex-1 bg-transparent py-3 font-mono text-xs text-white outline-none placeholder:text-slate-700"
                 />
-                <label className={`grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 ${isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, DOCX, PDF lub JPG (maks. 10 plików; tekst 5 MB/plik, DOCX 20 MB, PDF/JPG 20 MB/plik)">
+                <label className={`grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 ${isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz zdjęcie (JPG, PNG, WebP), PDF, DOCX lub tekst (maks. 10 plików; tekst 5 MB/plik, DOCX, PDF i zdjęcia 20 MB/plik)">
                   <Paperclip className="h-3.5 w-3.5" />
                   <input
                     type="file"
@@ -342,14 +347,14 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                     disabled={isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS}
                     onChange={(event) => void handleAttachmentSelection(event)}
                     className="sr-only"
-                    aria-label="Dołącz pliki tekstowe, DOCX, PDF lub JPG"
+                    aria-label="Dołącz zdjęcia (JPG, PNG, WebP), PDF, DOCX lub pliki tekstowe"
                   />
                 </label>
                 <button type="submit" aria-label="Wyślij wiadomość" disabled={(!terminalInput.trim() && chatAttachments.length === 0) || isTerminalLoading} className="grid h-8 w-8 place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 disabled:opacity-30">
                   <Send className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="mt-1 px-1 text-[9px] text-slate-500">Maks. 10 plików; tekst 5 MB/plik i 20 MB łącznie, DOCX 20 MB (10 MB po rozpakowaniu), PDF/JPG 20 MB/plik i 40 MB łącznie.</p>
+              <p className="mt-1 px-1 text-[9px] text-slate-500">Maks. 10 plików; tekst 5 MB/plik i 20 MB łącznie, DOCX 20 MB (10 MB po rozpakowaniu), PDF i zdjęcia (JPG, PNG, WebP) 20 MB/plik i 40 MB łącznie.</p>
             </form>
           </section>
         </div>
