@@ -1,0 +1,18 @@
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "LISTOPAD AI Image Search"
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+
+server:
+  # Replaced by the SEARXNG_SECRET container environment variable.
+  secret_key: "replace-with-SEARXNG_SECRET-environment"
+  limiter: false
+  public_instance: false
+  image_proxy: false
