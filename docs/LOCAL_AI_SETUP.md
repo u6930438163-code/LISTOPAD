@@ -1,22 +1,19 @@
-# Uruchamianie AI i Codex w BastillaOS
+# Ollama Qwen3 Abliterated v2 — LISTOPAD
 
-## Ollama
+Czat czterech agentów korzysta **wyłącznie** z modelu `huihui_ai/qwen3-abliterated:14b-v2` pod `http://127.0.0.1:11434`. Inni dostawcy, lokalne NLP i best-fit nie zastępują tego modelu. Błąd Ollamy jest widoczny jako błąd czatu.
 
-`npm run setup:ollama` instaluje lokalną usługę i model. Naprawia brakujące `zstd` na Debianie/Ubuntu, jeśli proces ma uprawnienia administratora. Domyślny mały model to `qwen3:0.6b` (około 523 MB do pobrania). Używa już ustawionego OLLAMA_MODEL, o ile nie jest `auto`.
+## Instalacja Linux / Debian / Codespaces
 
-Instalacja może potrwać kilka minut. W zwykłym terminalu uruchom polecenie bezpośrednio. Z konsoli WWW z krótkim limitem czasu możesz uruchomić `root exec nohup npm run setup:ollama > /tmp/bastilla-ai-setup.log 2>&1 < /dev/null &`, a następnie odczytać log przez `root exec tail -n 15 /tmp/bastilla-ai-setup.log`.
+```bash
+npm run setup:ollama
+npm run check:ollama
+```
 
-Usługa nasłuchuje tylko lokalnie na 127.0.0.1:11434. Nie udostępniaj samej Ollamy publicznie. Po ponownym uruchomieniu środowiska, gdy binaria i model nadal istnieją, wystarczy `ollama serve` lub ponowne uruchomienie instalatora.
+Skrypt instaluje Ollamę, pobiera **dokładnie v2**, aktualizuje tylko kontrolowane wpisy w ignorowanym pliku `.env.local` (pozostałe sekrety zachowuje), i sprawdza prawdziwą odpowiedź. Jeśli serwer aplikacji działał wcześniej, zrestartuj Node.
 
-Po instalacji wyślij do każdego z agentów oddzielnie wiadomość zaczynającą się od `@model`. Ten prefiks omija deterministyczne odpowiedzi best-fit. Dopiero faktyczna odpowiedź modelu potwierdza działanie AI. Aria ma wewnętrzny identyfikator `si_1`.
+W Codespaces `postStartCommand` najpierw ustawia model bez fallbacku, następnie automatycznie rozpoczyna instalację w tle. Log: `.runtime/ollama-v2-setup.log`. Wymaga około 10+ GiB RAM i 11 GiB wolnego miejsca; mniejsza maszyna zgłasza błąd, nie przełącza modelu. Port 11434 pozostaje lokalny, bez publicznego dostępu.
 
-## Codex CLI
+Konfiguracja bez pobierania: `bash scripts/setup-ollama.sh --configure-only`.
+Model jest tekstowy: zdjęcia i PDF nie aktywują zastępczego silnika. Sam commit nie instaluje modelu na hostingu AI Studio.
 
-1. `npm run setup:codex` — instaluje oficjalny pakiet @openai/codex w ignorowanym katalogu .bastilla-tools/codex, bez globalnej instalacji npm.
-2. `npm run codex -- login status` — sprawdza logowanie.
-3. `npm run codex -- login --device-auth` — uruchamia logowanie użytkownika; dokończ je osobiście. Nie przekazuj hasła ani tokenów na czacie.
-4. `npm run codex -- exec --sandbox read-only "Przejrzyj projekt i opisz znalezione błędy"` — przykład przeglądu bez zapisu.
-
-Kod i logowanie Codex nie są automatycznie udostępniane agentom przez GPT Actions. Logowanie Codex nie konfiguruje modelu Ollama ani publicznego API. W środowisku nietrwałym AI Studio instalacje i pobrane modele mogą zniknąć po odtworzeniu kontenera; skrypty pozwalają odtworzyć konfigurację.
-
-Źródła: https://docs.ollama.com/linux ; https://ollama.com/library/qwen3:0.6b ; https://learn.chatgpt.com/docs/codex/cli ; https://learn.chatgpt.com/docs/auth
+Źródło: https://huggingface.co/huihui-ai/Huihui-Qwen3-14B-abliterated-v2

@@ -22,7 +22,6 @@ import {
   DEFAULT_OPENAI_MODEL,
   LlmChainError,
   configuredProviders,
-  preferGeminiAsFallback,
   generateWithChain,
   type LlmChainConfig,
   type LlmTurn,
@@ -142,26 +141,17 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   xaiApiKey: XAI_API_KEY,
   xaiModel: XAI_MODEL,
   xaiBaseUrl: XAI_BASE_URL,
-  ollamaModel: (process.env.OLLAMA_MODEL || 'auto').trim(),
+  ollamaModel: 'huihui_ai/qwen3-abliterated:14b-v2',
   ollamaBaseUrl: (process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL).trim(),
   ollamaKeepAlive: (process.env.OLLAMA_KEEP_ALIVE || '24h').trim(),
   ollamaNumCtx: Number(process.env.OLLAMA_NUM_CTX) || 4096,
   ollamaNumPredict: Number(process.env.OLLAMA_NUM_PREDICT) || 0,
   ollamaNumThread: Number(process.env.OLLAMA_NUM_THREAD) || 0,
-  // GEMINI_AS_FALLBACK=on (domyślnie): zachowaj priorytety Ollama,
-  // a Gemini uruchamiaj w łańcuchu hybrydowym lub jako zapasowy silnik.
-  providers: preferGeminiAsFallback(
-    (process.env.LLM_PROVIDERS || 'ollama,gemini')
-      .split(',')
-      .map((name) => name.trim().toLowerCase())
-      .filter((name): name is 'gemini' | 'xai' | 'ollama' | 'openai' =>
-        name === 'gemini' || name === 'xai' || name === 'ollama' || name === 'openai'
-      ),
-    !/^(0|off|false|no|nie)$/i.test((process.env.GEMINI_AS_FALLBACK || 'on').trim()),
-  ),
+  // Single pinned model for LISTOPAD, no alternative provider.
+  providers: ['ollama'],
 };
 // Awaryjny silnik without_nlp, gdy modele zawiodą — domyślnie wyłączony (CHAT_LOCAL_FALLBACK=on włącza).
-const CHAT_LOCAL_FALLBACK = /^(1|on|true|yes|tak)$/i.test((process.env.CHAT_LOCAL_FALLBACK || 'off').trim());
+const CHAT_LOCAL_FALLBACK = false;
 // Stare API chmurowe (OpenRouter, Groq/xAI w konsoli HyperOS) działają tylko, gdy LLM_PROVIDERS zawiera gemini, openai lub xai.
 const CLOUD_LLM_ENABLED = (LLM_CHAIN_CONFIG.providers ?? []).some((name) => name === 'gemini' || name === 'openai' || name === 'xai');
 const usesOllama = () => configuredProviders(LLM_CHAIN_CONFIG).includes('ollama');
@@ -5110,7 +5100,7 @@ interface ChatExecResult {
 // Krótkie wiadomości są dopasowywane do matrycy argumentów; najlepszy argument odpowiada od razu,
 // bez modelu. Brak dopasowania = DEFAULT → model (Ollama). BEST_FIT_ROUTER=off wyłącza router,
 // a prefiks „@model" wymusza odpowiedź modelu dla pojedynczej wiadomości.
-const BEST_FIT_ROUTER_ENABLED = (process.env.BEST_FIT_ROUTER || 'on').trim().toLowerCase() !== 'off';
+const BEST_FIT_ROUTER_ENABLED = false;
 
 const formatBytesGb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 
