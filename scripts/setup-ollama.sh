@@ -3,7 +3,7 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 MODEL="huihui_ai/qwen3-abliterated:14b-v2"
 BASE="http://127.0.0.1:11434"
-MODE="$1"
+MODE="${1:-}"
 if [[ "$MODE" != "" && "$MODE" != "--configure-only" ]]; then echo "Usage: setup-ollama.sh [--configure-only]" >&2; exit 2; fi
 command -v python3 >/dev/null || { echo "Missing python3" >&2; exit 1; }
 umask 077
