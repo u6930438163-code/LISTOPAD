@@ -229,7 +229,7 @@ export const BastillaOSDashboardView: React.FC<BastillaOSDashboardViewProps> = (
               <div className="w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-400 flex items-center justify-center text-blue-400 text-3xl mx-auto shadow-[0_0_20px_rgba(14,165,233,0.4)]">
                 <i className="fa-solid fa-compact-disc animate-spin" style={{ animationDuration: '6s' }}></i>
               </div>
-              <h2 className="text-lg font-bold text-cyan-300">BastillaOS v9.0.0 · Debian 13 (Trixie)</h2>
+              <h2 className="text-lg font-bold text-cyan-300">BastillaOS v{dataStore.config?.sys_version || '9.5.0-Ollama-Gemini-MCP-Synced'} · Debian 13 (Trixie)</h2>
               <p className="text-slate-300 text-xs">Środowisko graficzne KDE Plasma (Deep Blue Edition) zintegrowane z jądrem SVL Ring-0.</p>
               <div className="pt-2 flex justify-center gap-3">
                 <button

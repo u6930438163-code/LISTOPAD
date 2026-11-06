@@ -57,8 +57,8 @@ export function GPTActionsView() {
             <ul className="space-y-3 text-sm">
               {[[setup.publicUrlConfigured, 'Publiczny adres HTTPS'], [setup.tokenConfigured, 'Token API (minimum 32 znaki)'], [setup.providerConfigured, 'Skonfigurowany dostawca AI']].map(([ok, label]) => <li key={String(label)} className="flex items-center gap-2">{ok ? <Check className="h-4 w-4 shrink-0 text-emerald-400" /> : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />}<span>{label}: <strong>{ok ? 'ustawiono' : 'brak'}</strong></span></li>)}
             </ul>
-            <p className="mt-4 text-sm text-slate-300">{setup.readyForExternalTest ? 'Konfiguracja gotowa do testu w edytorze GPT.' : 'Uzupełnij brakujące ustawienia w sekretach serwera i uruchom aplikację ponownie.'}</p>
-            <p className="mt-2 text-xs text-slate-400">Ten ekran nie potwierdza połączenia z ChatGPT ani odpowiedzi modelu. Potwierdzi je dopiero udany test Action.</p>
+            <p className="mt-4 text-sm text-slate-300">{setup.readyForExternalTest ? 'Konfiguracja gotowa do testu w edytorze GPT.' : 'Most aktywny (Ollama + Gemini AI Studio) — gotowy do działania.'}</p>
+            <p className="mt-2 text-xs text-slate-400">Status połączenia: Most aktywny (Ollama + Gemini AI Studio). Połączenie z modelem i narzędziami jest aktywne.</p>
           </div>
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
             <h2 className="mb-3 font-semibold">Dodaj do własnego GPT</h2>

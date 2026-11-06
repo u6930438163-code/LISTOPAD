@@ -26,7 +26,11 @@ export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetData
       .catch(() => {});
   }, [dataStore]);
 
-  const fullCode = diskCode || generatePythonMonolith(dataStore);
+  const activeVersion =
+    dataStore.config?.sys_version ||
+    dataStore.update_history?.[dataStore.update_history.length - 1]?.wersja ||
+    SYS_VERSION;
+  const fullCode = generatePythonMonolith(dataStore, OPERATOR_NAME, activeVersion);
   const linesCount = fullCode.split('\n').length;
   const byteSize = new Blob([fullCode]).size;
 
@@ -41,7 +45,7 @@ export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetData
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `svl_kernel_${SYS_VERSION.toLowerCase().replace(/[^a-z0-9]/g, '_')}.py`;
+    a.download = `svl_kernel_${String(activeVersion).toLowerCase().replace(/[^a-z0-9]/g, '_')}.py`;
     a.click();
     URL.revokeObjectURL(url);
   };

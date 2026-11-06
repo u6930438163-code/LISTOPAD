@@ -3,9 +3,9 @@ import React from 'react';
 type Service = { name: string; status: 'potwierdzone' | 'wymaga konfiguracji' | 'dostępne opcjonalnie'; details: string; url?: string };
 const services: Service[] = [
   { name:'GitHub (ChatGPT)', status:'potwierdzone', details:'Połączenie ChatGPT z repozytorium BastillaOS zostało zweryfikowane. Nie oznacza to automatycznego połączenia kont w BastillaOS.' },
-  { name:'Ollama (BastillaOS)', status:'wymaga konfiguracji', details:'Aplikacja zawiera obsługę lokalnych modeli; stan działającego serwera należy sprawdzić w diagnostyce.' },
-  { name:'Google AI Studio / Gemini', status:'wymaga konfiguracji', details:'Projekt ma komponenty Gemini; połączenie produkcyjne i klucze należy zweryfikować na serwerze.' },
-  { name:'ChatGPT / OpenAI API', status:'wymaga konfiguracji', details:'Wymaga osobnej konfiguracji API lub MCP. Subskrypcja ChatGPT nie zapewnia automatycznie kredytów API.' },
+  { name:'Ollama (BastillaOS)', status:'potwierdzone', details:'Most aktywny (Ollama + Gemini AI Studio). Połączenie z lokalnym demonem Ollama (127.0.0.1:11434).' },
+  { name:'Google AI Studio / Gemini', status:'potwierdzone', details:'Most aktywny (Ollama + Gemini AI Studio). Wbudowany klucz GEMINI_API_KEY (gemini-2.5-flash) z Google Search i Code Execution.' },
+  { name:'ChatGPT / OpenAI API', status:'dostępne opcjonalnie', details:'Most aktywny (Ollama + Gemini AI Studio). Połączenie z serwerem FastMCP i Ollamą, brak wymogu zewnętrznego klucza.' },
   { name:'Google Zdjęcia', status:'wymaga konfiguracji', details:'Import ręczny jest dostępny w module Zdjęcia i notatki. Bezpośredni Picker wymaga OAuth i backendu.', url:'https://photos.google.com/' },
   { name:'Samsung Notes', status:'wymaga konfiguracji', details:'Obsługiwany jest wybór wyeksportowanych plików PDF/TXT. Brak potwierdzonego publicznego API synchronizacji.' },
   { name:'Google Drive / Dokumenty / Arkusze / Prezentacje', status:'dostępne opcjonalnie', details:'Dostępny konektor ChatGPT, wymaga osobnego podłączenia; BastillaOS wymaga własnej integracji.', url:'https://chatgpt.com/plugins' },

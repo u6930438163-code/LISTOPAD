@@ -86,10 +86,39 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [mobileSection, setMobileSection] = useState<'chat' | 'agents'>('chat');
   const [showProtocolTools, setShowProtocolTools] = useState(false);
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(() => {
+    try {
+      return localStorage.getItem('bastilla_chat_fullscreen') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [syncingNow, setSyncingNow] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const followLatestMessagesRef = useRef(true);
+
+  const toggleFullScreen = () => {
+    setIsFullScreen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('bastilla_chat_fullscreen', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullScreen) {
+        setIsFullScreen(false);
+        try {
+          localStorage.setItem('bastilla_chat_fullscreen', 'false');
+        } catch {}
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullScreen]);
 
   const navigateToTab = (tab: TabId) => {
     if (onNavigate) {
@@ -305,16 +334,16 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsFullScreen((prev) => !prev)}
+                onClick={toggleFullScreen}
                 className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold transition ${
                   isFullScreen
-                    ? 'border-emerald-500/50 bg-emerald-950/70 text-emerald-200 hover:bg-emerald-900'
-                    : 'border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700'
+                    ? 'border-emerald-500/50 bg-emerald-950/70 text-emerald-200 hover:bg-emerald-900 shadow-sm shadow-emerald-500/20'
+                    : 'border-cyan-500/50 bg-cyan-950/40 text-cyan-200 hover:bg-cyan-900/60 shadow-sm shadow-cyan-500/10'
                 }`}
-                title={isFullScreen ? 'Pokaż górny nagłówek i dolny pasek nawigacji' : 'Czat na cały ekran'}
+                title={isFullScreen ? 'Zwiń do okna (pokaż nagłówek i pasek nawigacji)' : 'Rozwiń czat na cały ekran (ukrywa pasek i nagłówek)'}
               >
-                {isFullScreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-                <span className="hidden sm:inline">{isFullScreen ? 'Pasek' : 'Pełny ekran'}</span>
+                {isFullScreen ? <Minimize2 className="h-3 w-3 text-emerald-400" /> : <Maximize2 className="h-3 w-3 text-cyan-400" />}
+                <span className="font-semibold">{isFullScreen ? 'Pasek' : 'Pełny ekran'}</span>
               </button>
             </div>
           </div>

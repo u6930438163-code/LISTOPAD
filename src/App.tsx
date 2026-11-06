@@ -48,12 +48,13 @@ import { ChatAttachment, formatChatMessage } from './kernel/chatAttachments';
 import { isChatSystemChange } from './kernel/chatChanges';
 import type { ChatSystemChange } from './kernel/chatChanges';
 
-const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v8_6_0_without_nlp';
+const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v9_5_0_synced';
 
 export default function App() {
   const [rawDataStore, setRawDataStore] = useState<DataStore>(() => {
     try {
       localStorage.removeItem('svl_kernel_datastore_v8_5_1_desktop_ready');
+      localStorage.removeItem('svl_kernel_datastore_v8_6_0_without_nlp');
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);

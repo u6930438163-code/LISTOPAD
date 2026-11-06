@@ -10,7 +10,7 @@
 import { parseGeminiModelChain, runWithGeminiFallback } from './geminiVm.ts';
 
 export type LlmRole = 'user' | 'assistant';
-export type LlmProvider = 'gemini' | 'xai' | 'ollama';
+export type LlmProvider = 'gemini' | 'xai' | 'ollama' | 'openai';
 
 export interface LlmTurn {
   role: LlmRole;
@@ -48,6 +48,9 @@ export interface LlmChainConfig {
   xaiApiKey?: string;
   xaiModel?: string;
   xaiBaseUrl?: string;
+  openaiApiKey?: string;
+  openaiModel?: string;
+  openaiBaseUrl?: string;
   /** Pusty lub "auto" = pierwszy pobrany model z /api/tags. */
   ollamaModel?: string;
   ollamaBaseUrl?: string;
@@ -92,7 +95,7 @@ export class LlmChainError extends Error {
   constructor(failures: string[]) {
     super(failures.length
       ? `Żaden model nie odpowiedział: ${failures.join(' | ')}`
-      : 'Brak skonfigurowanych modeli (GEMINI_API_KEY, XAI_API_KEY, OLLAMA_MODEL).');
+      : 'Brak skonfigurowanych modeli (GEMINI_API_KEY, OPENAI_API_KEY, XAI_API_KEY, OLLAMA_MODEL).');
     this.name = 'LlmChainError';
     this.failures = failures;
   }
@@ -101,6 +104,8 @@ export class LlmChainError extends Error {
 export const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 export const DEFAULT_XAI_BASE_URL = 'https://api.x.ai/v1';
 export const DEFAULT_XAI_MODEL = 'grok-3-mini';
+export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1';
+export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 export const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
 /** Domyślny limit pozwala na długie odpowiedzi w oknie kontekstu 4096 tokenów. */
 export const OLLAMA_MAX_OUTPUT_TOKENS = 3072;
@@ -132,7 +137,7 @@ function trimBase(url: string): string {
 }
 
 function describeStatus(provider: LlmProvider, status: number): string {
-  const name = provider === 'gemini' ? 'Google Gemini' : provider === 'xai' ? 'xAI' : 'Ollama';
+  const name = provider === 'gemini' ? 'Google Gemini' : provider === 'openai' ? 'OpenAI' : provider === 'xai' ? 'xAI' : 'Ollama';
   if (status === 401 || status === 403) return `${name}: klucz API odrzucony (HTTP ${status}).`;
   if (status === 402) return `${name}: brak środków na koncie (HTTP 402).`;
   if (status === 429) return `${name}: limit żądań wyczerpany (HTTP 429).`;
@@ -335,6 +340,61 @@ export async function generateXai(
     if (!discovered || discovered === configured) throw error;
     return { text: await call(discovered), model: discovered };
   }
+}
+
+export async function generateOpenAi(
+  config: LlmChainConfig,
+  request: LlmRequest,
+  signal?: AbortSignal,
+): Promise<{ text: string; model: string }> {
+  if (request.attachments?.some((attachment) => attachment.mimeType === 'application/pdf')) {
+    throw new LlmProviderError('openai', 400, 'OpenAI: ten kanał nie obsługuje załączników PDF (obsługiwane w Gemini).');
+  }
+  const apiKey = (config.openaiApiKey || '').trim();
+  if (!apiKey) throw new Error('Brak OPENAI_API_KEY.');
+  const doFetch = config.fetchImpl ?? fetch;
+  const base = trimBase(config.openaiBaseUrl || DEFAULT_OPENAI_BASE_URL);
+  const imageParts = (request.attachments ?? [])
+    .filter((attachment) => attachment.mimeType.startsWith('image/'))
+    .map((attachment) => ({
+      type: 'image_url',
+      image_url: { url: `data:${attachment.mimeType};base64,${attachment.content}` },
+    }));
+  const messages = [
+    { role: 'system', content: request.system },
+    ...request.history.map((turn) => ({ role: turn.role, content: turn.text })),
+    {
+      role: 'user',
+      content: imageParts.length ? [{ type: 'text', text: request.message }, ...imageParts] : request.message,
+    },
+  ];
+
+  const model = (config.openaiModel || '').trim() || DEFAULT_OPENAI_MODEL;
+  const response = await doFetch(`${base}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: request.temperature ?? 0.7,
+      max_tokens: request.maxOutputTokens ?? OLLAMA_MAX_OUTPUT_TOKENS,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    await readErrorText(response);
+    throw new LlmProviderError('openai', response.status, `${describeStatus('openai', response.status)} [${model}]`);
+  }
+  const data: any = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  const text = typeof content === 'string'
+    ? content.trim()
+    : Array.isArray(content)
+    ? content.map((part: any) => (typeof part?.text === 'string' ? part.text : '')).join('').trim()
+    : '';
+  if (!text) throw new LlmProviderError('openai', 502, `OpenAI: pusta odpowiedź [${model}]`);
+  return { text, model };
 }
 
 /** Usuwa bloki rozumowania modeli „thinking” (<think>…</think>) z odpowiedzi. */
@@ -570,11 +630,13 @@ export function configuredProviders(config: LlmChainConfig): Array<LlmProvider> 
     return config.providers.filter((provider, index, list) => list.indexOf(provider) === index
       && (provider === 'ollama'
         || (provider === 'gemini' && Boolean((config.geminiApiKey || '').trim()))
+        || (provider === 'openai' && Boolean((config.openaiApiKey || '').trim()))
         || (provider === 'xai' && Boolean((config.xaiApiKey || '').trim()))));
   }
   const providers: Array<LlmProvider> = [];
   if ((config.geminiApiKey || '').trim()) providers.push('gemini');
   if ((config.xaiApiKey || '').trim()) providers.push('xai');
+  if ((config.openaiApiKey || '').trim()) providers.push('openai');
   if ((config.ollamaModel || '').trim()) providers.push('ollama');
   return providers;
 }
@@ -608,6 +670,8 @@ export async function generateWithChain(
     try {
       const { text, model } = provider === 'gemini'
         ? await generateGemini(config, request, attemptSignal)
+        : provider === 'openai'
+        ? await generateOpenAi(config, request, attemptSignal)
         : provider === 'xai'
         ? await generateXai(config, request, attemptSignal)
         : await generateOllama(config, request, attemptSignal);

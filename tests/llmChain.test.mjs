@@ -5,6 +5,7 @@ import {
   configuredProviders,
   preferGeminiAsFallback,
   generateWithChain,
+  generateOpenAi,
   pickXaiChatModel,
   resetXaiModelCache,
   resetOllamaModelCache,
@@ -20,6 +21,7 @@ const json = (status, body) => new Response(JSON.stringify(body), {
 });
 const geminiOk = (text) => json(200, { candidates: [{ content: { parts: [{ text }] } }] });
 const xaiOk = (text) => json(200, { choices: [{ message: { content: text } }] });
+const openAiOk = (text) => json(200, { choices: [{ message: { content: text } }] });
 
 function mockFetch(routes) {
   const calls = [];
@@ -394,3 +396,35 @@ test('PDF nie jest pomijany przez Ollamę ani xAI przed przekazaniem do Gemini',
     mimeType: 'application/pdf', data: pdf.content,
   });
 });
+
+test('OpenAI odpowiada jako skonfigurowany dostawca z historią i instrukcją systemową', async () => {
+  const { impl, calls } = mockFetch([
+    [/api\.openai\.com\/v1\/chat\/completions/, { respond: () => openAiOk('OpenAI odpowiada poprawnie.') }],
+  ]);
+  const result = await generateWithChain(
+    { openaiApiKey: 'sk-test', openaiModel: 'gpt-4o-mini', fetchImpl: impl },
+    request,
+  );
+  assert.equal(result.provider, 'openai');
+  assert.equal(result.model, 'gpt-4o-mini');
+  assert.equal(result.text, 'OpenAI odpowiada poprawnie.');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].headers.Authorization, 'Bearer sk-test');
+  assert.deepEqual(calls[0].body.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user']);
+});
+
+test('awaria OpenAI (429) przełącza na kolejnego dostawcę (Gemini)', async () => {
+  const { impl } = mockFetch([
+    [/api\.openai\.com/, { respond: () => json(429, { error: 'rate limit' }) }],
+    [/generativelanguage.*gemini-a:generateContent/, { respond: () => geminiOk('Fallback Gemini po OpenAI 429') }],
+  ]);
+  const result = await generateWithChain(
+    { openaiApiKey: 'sk-test', geminiApiKey: 'g-test', geminiModel: 'gemini-a', providers: ['openai', 'gemini'], fetchImpl: impl },
+    request,
+  );
+  assert.equal(result.provider, 'gemini');
+  assert.equal(result.text, 'Fallback Gemini po OpenAI 429');
+  assert.equal(result.failures.length, 1);
+  assert.match(result.failures[0], /limit żądań wyczerpany/);
+});
+
