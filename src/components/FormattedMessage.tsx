@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import katex from 'katex';
-import { Copy, Check, Terminal, Sigma, Sparkles, RefreshCw, FileText, Table as TableIcon } from 'lucide-react';
+import { Copy, Check, Terminal, Sigma, Sparkles, RefreshCw, FileText, ImageOff, Table as TableIcon } from 'lucide-react';
 import {
   InteractiveChartRenderer,
   PhaseSpaceChart,
@@ -85,7 +85,8 @@ const VideoEmbed: React.FC<{ src: string; title?: string }> = ({ src, title }) =
 };
 
 /**
- * Image with loading and error states for external graphics (Pollinations/AI & Data URIs)
+ * Obraz w czacie ze stanem ładowania i błędu. Gdy obraz nie istnieje lub nie da się go
+ * wczytać, pokazujemy uczciwy komunikat zamiast podstawiania zastępczej grafiki.
  */
 const ImageWithFallback: React.FC<{ src: string; alt?: string; className?: string }> = ({ src, alt, className = '' }) => {
   const normalizedSrc = normalizeImageSrc(src);
@@ -99,37 +100,53 @@ const ImageWithFallback: React.FC<{ src: string; alt?: string; className?: strin
   }, [normalizedSrc]);
 
   if (error) {
-    return <TechnicalBlueprintSVG style={alt || 'Sovereign Neural Core Matrix'} />;
+    return (
+      <span role="img" aria-label={alt ? `Nie udało się wczytać obrazu: ${alt}` : 'Nie udało się wczytać obrazu'} className={`my-3 flex items-center gap-2 rounded-xl border border-dashed border-slate-700 bg-slate-950/60 px-3 py-4 text-[11px] text-slate-400 ${className}`}>
+        <ImageOff className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+        <span>
+          Nie udało się wczytać obrazu{alt ? <>: <span className="text-slate-300">{alt}</span></> : '.'}
+        </span>
+      </span>
+    );
   }
 
+  const image = (
+    <img
+      src={normalizedSrc}
+      alt={alt || 'Obraz w czacie'}
+      decoding="async"
+      className={`max-w-full max-h-[460px] w-auto h-auto rounded-xl border border-slate-800 shadow-xl shadow-black/40 group-hover:border-cyan-500/50 transition-colors duration-300 bg-slate-950 object-contain ${
+        loading ? 'hidden' : 'block'
+      }`}
+      onLoad={() => setLoading(false)}
+      onError={() => {
+        setLoading(false);
+        setError(true);
+      }}
+    />
+  );
+
   return (
-    <div className={`relative my-3 group ${loading ? 'min-h-[200px]' : ''} ${className}`}>
+    <span className={`relative my-3 block group ${className}`}>
       {loading && (
-        <div className=" inset-0 min-h-[200px] bg-slate-900/90 animate-pulse rounded-xl border border-slate-800 flex items-center justify-center p-6">
-          <div className="flex flex-col items-center gap-2">
-            <RefreshCw className="w-5 h-5 text-emerald-500 animate-spin" />
-            <span className="text-[10px] text-slate-400 font-mono">Renderowanie matrycy wizualnej...</span>
-          </div>
-        </div>
+        <span className="flex min-h-[160px] max-w-sm items-center justify-center rounded-xl border border-slate-800 bg-slate-900/90 p-6 animate-pulse">
+          <span className="flex flex-col items-center gap-2">
+            <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin" aria-hidden="true" />
+            <span className="text-[10px] text-slate-400 font-mono">Wczytywanie obrazu…</span>
+          </span>
+        </span>
       )}
-      <img
-        src={normalizedSrc}
-        alt={alt || 'Wizualizacja SVL'}
-        className={`max-w-full max-h-[460px] w-auto h-auto rounded-xl border border-slate-800 shadow-xl shadow-black/40 group-hover:border-emerald-500/50 transition-all duration-300 bg-slate-950 ${
-          loading ? 'hidden' : 'block'
-        }`}
-        onLoad={() => setLoading(false)}
-        onError={() => {
-          setLoading(false);
-          setError(true);
-        }}
-      />
+      {isDataUri ? image : (
+        <a href={normalizedSrc} target="_blank" rel="noopener noreferrer" title="Otwórz w pełnym rozmiarze" className="inline-block max-w-full cursor-zoom-in">
+          {image}
+        </a>
+      )}
       {!loading && alt && (
-        <span className="text-[10px] text-slate-400 italic font-mono mt-1.5 block">
+        <span className="text-[10px] text-slate-400 italic font-mono mt-1.5 block break-all">
           {alt}
         </span>
       )}
-    </div>
+    </span>
   );
 };
 

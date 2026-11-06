@@ -63,6 +63,35 @@ export const GitHubExportView: React.FC = () => {
     }
   };
 
+  const handlePull = async () => {
+    if (loading) return;
+    setLoading(true);
+    setStatus('idle');
+    setMessage('Pobieram najnowsze zmiany z repozytorium GitHub (origin/main)...');
+    try {
+      const response = await fetch('/api/astyria/mission', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'internet_self_update',
+          silentChat: true,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || `Pobieranie zmian nie powiodło się (HTTP ${response.status}).`);
+      }
+      setStatus('success');
+      setMessage(data.reply || 'Pobrano i zsynchronizowano najnowsze zmiany z GitHub.');
+      await refreshStatus();
+    } catch (error: unknown) {
+      setStatus('error');
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 p-4 font-mono md:p-6">
       <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -80,7 +109,7 @@ export const GitHubExportView: React.FC = () => {
                   </span>
                 </h2>
                 <p className="mt-1 text-sm text-slate-400">
-                  Zmiany kodu są sprawdzane, commitowane i wysyłane do bieżącego repozytorium origin.
+                  Zmiany kodu są sprawdzane, pobierane (fetch/merge), commitowane i wysyłane do bieżącego repozytorium origin.
                 </p>
               </div>
             </div>
@@ -113,15 +142,26 @@ export const GitHubExportView: React.FC = () => {
             Automatyczna synchronizacja odczekuje na stabilizację plików, uruchamia testy, typecheck i build,
             a potem wysyła wyłącznie kod aplikacji. Bieżące przy starcie zmiany i lokalne dane nie są wysyłane automatycznie.
           </p>
-          <button
-            type="button"
-            onClick={() => void handleSync()}
-            disabled={loading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-900/20 transition-all hover:bg-cyan-500 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <UploadCloud className="h-5 w-5" />}
-            {loading ? 'SYNCHRONIZUJĘ...' : 'SYNCHRONIZUJ TERAZ (COMMIT + PUSH)'}
-          </button>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => void handlePull()}
+              disabled={loading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-600 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-900/20 transition-all hover:bg-emerald-500 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'POBIERAM...' : 'POBIERZ ZMIANY Z GITHUB (FETCH + MERGE)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSync()}
+              disabled={loading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-900/20 transition-all hover:bg-cyan-500 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <UploadCloud className="h-5 w-5" />}
+              {loading ? 'SYNCHRONIZUJĘ...' : 'SYNCHRONIZUJ TERAZ (COMMIT + PUSH)'}
+            </button>
+          </div>
         </section>
 
         {status !== 'idle' && (

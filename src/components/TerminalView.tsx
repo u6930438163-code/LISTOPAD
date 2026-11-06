@@ -340,7 +340,16 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onSendProtocol,
   onExecutePythonCommand,
 }) => {
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('svl_terminal_history_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.slice(-100);
+      }
+    } catch {}
+    return [];
+  });
   const [antiMirrorActive, setAntiMirrorActive] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem('svl_antimirror_active');
@@ -357,22 +366,47 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       localStorage.setItem('svl_antimirror_active', JSON.stringify(nextVal));
     } catch {}
   };
-  const [logs, setLogs] = useState<LogEntry[]>([
-    {
-      id: 'init-1',
-      type: 'banner',
-      content: `================================================================================
-       SVL KERNEL v${SYS_VERSION} | DETERMINISTYCZNY INTERFEJS POLECEŃ
+  const activeKernelVersion =
+    dataStore.config?.sys_version ||
+    dataStore.update_history?.[dataStore.update_history.length - 1]?.wersja ||
+    SYS_VERSION;
+
+  const initialBannerLog: LogEntry = {
+    id: 'init-1',
+    type: 'banner',
+    content: `================================================================================
+       SVL KERNEL v${activeKernelVersion} | DETERMINISTYCZNY INTERFEJS POLECEŃ
 ================================================================================
 Dowódca infrastruktury: Alex (Ring-0 Root Control)
 Operator / Tata:        ${OPERATOR_NAME} (Tata)
 Silnik poleceń:         AKTYWNY (jawny protokół i komendy jądra)
+Status mostu:           Most aktywny (Ollama + Gemini AI Studio)
+Model terminala:        gemini-2.5-flash [Google Search + Code Execution] + MCP/Ollama
 Samonaprawa z logów:    WŁĄCZONA (ACTIVE_MONITORING)
 Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
 ================================================================================`,
-      timestamp: 'START'
-    }
-  ]);
+    timestamp: 'START',
+  };
+  const [logs, setLogs] = useState<LogEntry[]>(() => {
+    try {
+      localStorage.removeItem('svl_terminal_logs_v1');
+      const saved = localStorage.getItem('svl_terminal_logs_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(-150);
+      }
+    } catch {}
+    return [initialBannerLog];
+  });
+
+  useEffect(() => {
+    setLogs((prev) => {
+      if (prev.length > 0 && prev[0].id === 'init-1' && prev[0].content !== initialBannerLog.content) {
+        return [initialBannerLog, ...prev.slice(1)];
+      }
+      return prev;
+    });
+  }, [initialBannerLog.content]);
 
   const DEFAULT_TERMINAL_CMDS = [
     'root status',
@@ -425,7 +459,16 @@ Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
 
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'auto' });
-  }, [logs.length]);
+    try {
+      localStorage.setItem('svl_terminal_logs_v2', JSON.stringify(logs.slice(-150)));
+    } catch {}
+  }, [logs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('svl_terminal_history_v1', JSON.stringify(history.slice(-100)));
+    } catch {}
+  }, [history]);
 
   const addLog = (content: string, type: LogEntry['type'] = 'output') => {
     const now = new Date();
@@ -438,7 +481,7 @@ Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
     if (!rawCmd) return;
 
     // Save history
-    setHistory((prev) => [...prev, rawCmd]);
+    setHistory((prev) => [...prev.slice(-99), rawCmd]);
 
     addLog(`$ ${rawCmd}`, 'input');
 
@@ -490,7 +533,7 @@ Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
         }
         const currentDs = dataStoreRef.current;
         const report = `[SVL-STATUS]
-Wersja jądra:        ${SYS_VERSION}
+Wersja jądra:        ${currentDs.config?.sys_version || SYS_VERSION}
 Dowódca Infra:      Alex (Ring-0)
 Operator:            ${OPERATOR_NAME} (Tata)
 Tryb pracy:          ${currentDs.config?.mode}
@@ -541,6 +584,10 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
 
       case 'clear':
         setLogs([]);
+        try {
+          localStorage.removeItem('svl_terminal_logs_v1');
+          localStorage.removeItem('svl_terminal_logs_v2');
+        } catch {}
         break;
 
       case 'export': {
@@ -549,7 +596,8 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `svl_kernel_${SYS_VERSION.toLowerCase().replace(/[^a-z0-9]/g, '_')}.py`;
+        const activeVer = dataStoreRef.current.config?.sys_version || SYS_VERSION;
+        a.download = `svl_kernel_${String(activeVer).toLowerCase().replace(/[^a-z0-9]/g, '_')}.py`;
         a.click();
         URL.revokeObjectURL(url);
         addLog('[EXPORT]: Skrypt svl_kernel.py został pomyślnie wygenerowany i pobrany.', 'success');
@@ -612,7 +660,28 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
       case 'bump':
       case 'config':
       case 'history':
-      case 'clear_chat': {
+      case 'clear_chat':
+      case 'list':
+      case 'list-apps':
+      case 'list-db':
+      case 'create-app':
+      case 'create-db':
+      case 'createdb':
+      case 'build':
+      case 'run':
+      case 'start':
+      case 'stop':
+      case 'inspect':
+      case 'app':
+      case 'apps':
+      case 'without_nlp':
+      case 'euler':
+      case 'fourier':
+      case 'mission':
+      case 'propose':
+      case 'approve':
+      case 'reject':
+      case 'proposals': {
         const execute = onExecutePythonCommandRef.current;
         if (!execute) { addLog('Brak połączenia z terminalem serwera.', 'error'); break; }
         try {
@@ -623,37 +692,18 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
       }
 
       default: {
-        // Przywrócona konsola Binarnej Hiperprzestrzeni: każde polecenie → wektor 128-bit + NLP (OpenRouter) + komendy jądra
-        addLog('[HYPEROS] Przetwarzanie w Binarnej Hiperprzestrzeni (128-bit) + NLP...', 'system');
-        try {
-          const res = await fetch('/api/hyperos/console', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: rawCmd }),
-          });
-          const data = await res.json();
-          if (!res.ok || !data.success) {
-            throw new Error(data.error || `HTTP ${res.status}`);
+        const execute = onExecutePythonCommandRef.current;
+        if (execute) {
+          try {
+            const res = await execute(rawCmd);
+            addLog(res.output, 'output');
+            break;
+          } catch (err: any) {
+            addLog(`Błąd wykonania polecenia jądra: ${err.message}`, 'error');
+            break;
           }
-          if (data.kernelOutput) {
-            addLog(data.kernelOutput, 'output');
-          }
-          addLog(`[HYPEROS 128-bit] intencja: ${data.intent} · podobieństwo: ${(data.score * 100).toFixed(1)}% · NLP: ${data.nlpProvider}`, 'system');
-          addLog(data.reply, 'success');
-        } catch (e: any) {
-          const pyCmd = onExecutePythonCommandRef.current;
-          if (pyCmd) {
-            try {
-              const res = await pyCmd(rawCmd);
-              addLog(res.output, 'output');
-              break;
-            } catch (err: any) {
-              addLog(`Błąd wykonania polecenia jądra: ${err.message}`, 'error');
-              break;
-            }
-          }
-          addLog(`Błąd konsoli HyperOS: ${e.message}`, 'error');
         }
+        addLog('Brak aktywnego połączenia z jądrem terminala.', 'error');
         break;
       }
     }
@@ -670,6 +720,10 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
         <div className="flex items-center gap-1 sm:gap-1.5 text-slate-400 shrink-0">
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
           <span className="hidden xs:inline">Polecenia:</span>
+          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-950/90 border border-emerald-700/70 text-emerald-300 font-bold text-[10px] shadow-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Most aktywny (Ollama + Gemini AI Studio)</span>
+          </span>
           {dataStore.config?.root_privileges && (
             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/80 border border-red-800/60 text-red-300 font-bold text-[10px]">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />

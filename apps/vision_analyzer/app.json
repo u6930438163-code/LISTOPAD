@@ -1,0 +1,17 @@
+{
+  "id": "vision_analyzer",
+  "name": "Vision Analyzer · Moondream Pipeline",
+  "type": "python-microservice",
+  "version": "2.0.0",
+  "author": "Triada (Alex, Astyria, Aria, Aurelius)",
+  "description": "Zsynchronizowany moduł wizyjny (vision_analyzer) utworzony przez czat.",
+  "entry": "index.html",
+  "status": "running",
+  "created_at": "2026-11-05T23:49:52.024914+00:00",
+  "files": [
+    "README.md",
+    "app.json",
+    "index.html",
+    "main.py"
+  ]
+}

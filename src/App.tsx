@@ -34,6 +34,7 @@ import { CloudLibraryView } from './components/CloudLibraryView';
 import { IntegrationsView } from './components/IntegrationsView';
 import { BastillaDashboard } from './components/BastillaDashboard';
 import { BastillaOS2View } from './components/BastillaOS2View';
+import { GPTActionsView } from './components/GPTActionsView';
 import {
   AstyriaMissionAction,
   AgentProtocolReply,
@@ -47,12 +48,13 @@ import { ChatAttachment, formatChatMessage } from './kernel/chatAttachments';
 import { isChatSystemChange } from './kernel/chatChanges';
 import type { ChatSystemChange } from './kernel/chatChanges';
 
-const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v8_6_0_without_nlp';
+const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v9_5_0_synced';
 
 export default function App() {
   const [rawDataStore, setRawDataStore] = useState<DataStore>(() => {
     try {
       localStorage.removeItem('svl_kernel_datastore_v8_5_1_desktop_ready');
+      localStorage.removeItem('svl_kernel_datastore_v8_6_0_without_nlp');
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -171,12 +173,6 @@ export default function App() {
 
   // Full system & version synchronization via Astyria mission endpoint + kernel state
   const handleSyncSystem = async () => {
-    const reloadPreview = () => {
-      const url = new URL(window.location.href);
-      url.searchParams.set('view', activeTab);
-      url.searchParams.set('_sync', String(Date.now()));
-      window.location.assign(url.toString());
-    };
     try {
       const res = await fetch('/api/astyria/mission', {
         method: 'POST',
@@ -192,7 +188,7 @@ export default function App() {
           try {
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
           } catch {}
-          reloadPreview();
+          setChatSystemChange({ type: 'app-created', appId: 'ollama_config' });
           return;
         }
       }
@@ -203,11 +199,14 @@ export default function App() {
         if (stateData?.store) {
           const normalized = normalizeDataStore(stateData.store);
           setDataStore(normalized);
-          reloadPreview();
+          try {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+          } catch {}
+          setChatSystemChange({ type: 'app-created', appId: 'ollama_config' });
           return;
         }
       }
-      throw new Error('Serwer nie potwierdził synchronizacji. Podgląd nie został odświeżony.');
+      throw new Error('Serwer nie potwierdził synchronizacji.');
     } catch (e) {
       console.error(e);
       throw e;
@@ -412,7 +411,7 @@ export default function App() {
         {
           agent: 'Mateusz Mitek',
           tekst: attachments.length > 0
-            ? formatChatMessage(message, attachments)
+            ? (typeof result.userMessage === 'string' ? result.userMessage : formatChatMessage(message, attachments))
             : message.startsWith('/propose write-file ')
             ? message
             : message.trim(),
@@ -500,21 +499,23 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex min-h-dvh min-w-0 max-w-full flex-col overflow-x-hidden bg-[#050b18] font-sans text-slate-100 selection:bg-cyan-400/30 selection:text-cyan-100">
-        <Header
-          dataStore={dataStore}
-          onReset={handleResetToDefault}
-          onShowReport={() => setShowReportModal(true)}
-          onSyncSystem={handleSyncSystem}
-        />
+      <div className={`flex min-w-0 max-w-full flex-col overflow-x-hidden bg-[#050b18] font-sans text-slate-100 selection:bg-cyan-400/30 selection:text-cyan-100 ${activeTab === 'comms' || activeTab === 'terminal' ? 'h-dvh max-h-dvh overflow-hidden' : 'min-h-dvh'}`}>
+        {activeTab !== 'comms' && (
+          <Header
+            dataStore={dataStore}
+            onReset={handleResetToDefault}
+            onShowReport={() => setShowReportModal(true)}
+            onSyncSystem={handleSyncSystem}
+          />
+        )}
 
         {(isAgentLoading || terminalBusy) && (
-          <div className="px-3 py-2">
+          <div className="px-3 py-1.5 shrink-0">
             <LiveProgressBar active label={terminalBusy ? 'Terminal — wykonywanie polecenia' : 'AI — przetwarzanie zapytania'} detail="Trwa rzeczywiste żądanie do serwera; procent nie jest dostępny." />
           </div>
         )}
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:flex-row">
           <Navigation
             activeTab={activeTab}
             onSelectTab={setActiveTab}
@@ -522,7 +523,7 @@ export default function App() {
             versionCount={dataStore?.update_history?.length || 0}
           />
 
-        <main className={`flex min-w-0 flex-1 flex-col overflow-x-hidden ${activeTab === 'comms' || activeTab === 'terminal' ? 'min-h-[75dvh] w-full lg:min-h-[calc(100dvh-7rem)]' : 'min-h-0'}`}>
+        <main className={`flex min-w-0 flex-1 flex-col overflow-x-hidden ${activeTab === 'comms' || activeTab === 'terminal' ? 'h-full min-h-0 w-full overflow-hidden' : 'min-h-0'}`}>
           {activeTab === 'home' && <SystemResourceMeters />}
           {activeTab === 'home' && <OllamaModelManager />}
           {activeTab === 'home' && <BackgroundAgentsStatus />}
@@ -550,6 +551,7 @@ export default function App() {
               sendError={agentError}
               onClearHistory={handleClearHistory}
               onForceSync={handleForceSync}
+              onNavigate={setActiveTab}
             />
           )}
 
@@ -668,6 +670,10 @@ export default function App() {
 
           {activeTab === 'github' && (
             <GitHubExportView />
+          )}
+
+          {activeTab === 'gpt_actions' && (
+            <GPTActionsView />
           )}
         </main>
         </div>

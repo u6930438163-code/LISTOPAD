@@ -1,0 +1,16 @@
+{
+  "id": "systemmonitor",
+  "name": "SystemMonitor · Dashboard Zasobów",
+  "type": "html5-web",
+  "version": "1.0.0",
+  "author": "Aria (si_1) & Operator",
+  "description": "Dashboard monitorowania zasobów w czasie rzeczywistym utworzony z czatu (#44: /propose create-app SystemMonitor dashboard).",
+  "entry": "index.html",
+  "status": "running",
+  "created_at": "2026-11-05T23:49:52.024914+00:00",
+  "files": [
+    "app.json",
+    "index.html",
+    "README.md"
+  ]
+}

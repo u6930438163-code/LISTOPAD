@@ -5,8 +5,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --import tsx server.ts",
-    "start": "node --import tsx server.ts",
+    "dev": "node scripts/configure-ollama-v2.mjs && node --import tsx server.ts",
+    "start": "node scripts/configure-ollama-v2.mjs && node --import tsx server.ts",
     "maintenance": "node scripts/maintenance.mjs",
     "check:gemini": "node --import tsx scripts/check-gemini.mjs",
     "check:api": "node scripts/check-bastilla-api.mjs",
@@ -20,7 +20,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "start:mcp": "bash scripts/start-bastilla-mcp.sh",
-    "mcp:client": "python integrations/mcp/client.py"
+    "mcp:client": "python integrations/mcp/client.py",
+    "check:ollama": "bash scripts/check-ollama-v2.sh",
+    "configure:ollama-v2": "node scripts/configure-ollama-v2.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",

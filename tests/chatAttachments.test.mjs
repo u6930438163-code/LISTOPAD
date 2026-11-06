@@ -11,6 +11,7 @@ import {
   MAX_CHAT_BINARY_ATTACHMENT_BYTES,
   MAX_CHAT_BINARY_ATTACHMENTS_BYTES,
   getChatAttachmentMimeType,
+  isChatImageUrl,
   validateChatAttachments,
 } from '../src/kernel/chatAttachments.ts';
 
@@ -131,4 +132,47 @@ test('rejects mismatched, malformed and oversized PDF/JPEG data', () => {
     mimeType: 'image/jpeg',
   }));
   assert.equal(validateChatAttachments(oversizedCollection).valid, false);
+});
+
+test('accepts PNG and WebP photos with verified signatures', () => {
+  assert.match(CHAT_ATTACHMENT_ACCEPT, /\.png/);
+  assert.match(CHAT_ATTACHMENT_ACCEPT, /\.webp/);
+  assert.equal(getChatAttachmentMimeType('zdjęcie.PNG'), 'image/png');
+  assert.equal(getChatAttachmentMimeType('foto.webp'), 'image/webp');
+  const result = validateChatAttachments([
+    { name: 'ekran.png', content: 'iVBORw0KGgoAAAAAAAAAAA==', mimeType: 'image/png' },
+    { name: 'foto.webp', content: 'UklGRhAAAABXRUJQVlA4IAAAAAA=', mimeType: 'image/webp' },
+  ]);
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.attachments.map((file) => file.mimeType), ['image/png', 'image/webp']);
+});
+
+test('rejects photos whose content does not match the declared format', () => {
+  assert.equal(validateChatAttachments([{ name: 'fake.png', content: '/9j/4A==', mimeType: 'image/png' }]).valid, false);
+  assert.equal(validateChatAttachments([{ name: 'fake.webp', content: 'UklGRhAAAABXQVZFZm10IAAAAAA=', mimeType: 'image/webp' }]).valid, false);
+  assert.equal(validateChatAttachments([{ name: 'wrong.png', content: 'iVBORw0KGgoAAAAAAAAAAA==', mimeType: 'image/jpeg' }]).valid, false);
+});
+
+test('does not trust a client-supplied image URL', () => {
+  const result = validateChatAttachments([
+    { name: 'photo.jpg', content: '/9j/4A==', mimeType: 'image/jpeg', url: 'https://evil.example/x.jpg' },
+  ]);
+  assert.equal(result.valid, true);
+  assert.equal(result.attachments[0].url, undefined);
+});
+
+test('embeds stored chat photos so the chat can render them', () => {
+  const url = '/api/chat/images/0123456789abcdef0123456789abcdef.png';
+  assert.equal(isChatImageUrl(url), true);
+  assert.equal(isChatImageUrl('/api/chat/images/../../etc/passwd'), false);
+  assert.equal(isChatImageUrl('https://evil.example/x.png'), false);
+  const text = formatChatMessage('Co widzisz?', [
+    { name: 'ekran.png', content: 'iVBORw0KGgoAAAAAAAAAAA==', mimeType: 'image/png', url },
+  ]);
+  assert.match(text, /Załączono zdjęcie PNG: ekran\.png/);
+  assert.ok(text.includes(`![ekran.png](${url})`));
+  const untrusted = formatChatMessage('', [
+    { name: 'x.png', content: 'iVBORw0KGgoAAAAAAAAAAA==', mimeType: 'image/png', url: 'javascript:alert(1)' },
+  ]);
+  assert.ok(!untrusted.includes('!['));
 });

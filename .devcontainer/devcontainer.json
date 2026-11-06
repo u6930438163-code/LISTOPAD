@@ -16,7 +16,7 @@
     }
   },
   "postCreateCommand": "npm ci && python3 --version && node --version && (docker compose version || echo 'Docker Compose unavailable; BastillaOS web app can still run')",
-  "postStartCommand": "bash scripts/start-codespaces.sh && bash scripts/start-codespaces-mcp.sh",
+  "postStartCommand": "bash scripts/setup-ollama.sh --configure-only && mkdir -p .runtime && (nohup bash scripts/setup-ollama.sh > .runtime/ollama-v2-setup.log 2>&1 </dev/null &) && bash scripts/start-codespaces.sh && bash scripts/start-codespaces-mcp.sh",
   "customizations": {
     "vscode": {
       "extensions": [

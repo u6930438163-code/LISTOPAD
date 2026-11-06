@@ -38,7 +38,7 @@ export interface DataStore {
 
 export const INITIAL_DATA_STORE: DataStore = {
   config: {
-    sys_version: "9.0.0-Triada-BestOS-Mission",
+    sys_version: "9.5.0-Ollama-Gemini-MCP-Synced",
     mode: "Local-Deterministic-Production",
     active_profiles: [...TRIAD_AGENT_NAMES],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
@@ -70,7 +70,7 @@ export const INITIAL_DATA_STORE: DataStore = {
       vcpu: 4,
       ram: "8 GiB",
       storage: "40 GiB NVMe",
-      sys_version: "9.0.0-Triada-BestOS-Mission"
+      sys_version: "9.5.0-Ollama-Gemini-MCP-Synced"
     },
     vm_dalle_3: {
       vm_name: "VM_Dalle_3",
@@ -80,7 +80,7 @@ export const INITIAL_DATA_STORE: DataStore = {
     vm_ten_system: {
       vm_name: "VM_Ten_System",
       status: "DEPLOYED_PRODUCTION",
-      kernel: "v9.0.0-Triada-BestOS-Mission",
+      kernel: "v9.5.0-Ollama-Gemini-MCP-Synced",
       app_version: "1.2.3-NodeReact-VM",
       filesystem: "ext4 (10 GiB)",
       ram_allocation: "4 GiB (<70% Idle Target)",
@@ -268,6 +268,31 @@ export const INITIAL_DATA_STORE: DataStore = {
       wersja: "8.8.0-Triada-BestOS-Mission",
       data: "2026-10-30 08:00:00 CET",
       opis: "Pełna synchronizacja wersji jądra systemu do v8.8.0-Triada-BestOS-Mission (misja BUILD_BEST_OS): ujednolicenie SYS_VERSION w svlKernel.ts, svl_kernel.py oraz fallbacków wersji w server.ts."
+    },
+    {
+      wersja: "9.0.0-Triada-BestOS-Mission",
+      data: "2026-11-05 22:23:35 CET",
+      opis: "Misja Triady BUILD_BEST_OS: budowa najlepszego OS na bazie SVL_System — ROOT RING-0 + autonomia w tle."
+    },
+    {
+      wersja: "9.2.1-Sync-Complete",
+      data: "2026-11-05 22:37:37 CET",
+      opis: "Pełna synchronizacja po zmianach z czatu i wdrożeniu Ollama Config oraz Raw Socket RX Monitor v8.5.1."
+    },
+    {
+      wersja: "9.3.0-Chat-Apps-DB-Synced",
+      data: "2026-11-05 23:50:23 CET",
+      opis: "Pełna synchronizacja wszystkich projektów i baz danych utworzonych przez czat (SystemMonitor, VisionProcessor, Vision Engine, Vision Analyzer, Vision Bridge v2.0, Diagnostics, Wallet Manager oraz baza investigation_db.sqlite)."
+    },
+    {
+      wersja: "9.4.0-OpenAI-ChatGPT-Ready",
+      data: "2026-11-06 00:05:29 CET",
+      opis: "Synchronizacja baz danych (chat_history_v1.sqlite, system_state_v1.sqlite), eksportu stanu oraz integracja MCP Bridge."
+    },
+    {
+      wersja: "9.5.0-Ollama-Gemini-MCP-Synced",
+      data: "2026-11-06 02:25:00 CET",
+      opis: "Pełna synchronizacja jądra v9.5.0: Most aktywny (Ollama + Gemini AI Studio), terminal gemini-2.5-flash [Google Search + Code Execution], FastMCP Bridge (mcp_server.py + hub.py), kalibracja Aria (/home/aria/scripts/calibration/) oraz synchronizacja 26 aplikacji i 46 baz SQLite."
     }
   ],
   chat_history: [
@@ -332,7 +357,7 @@ export const INITIAL_BACKUP_DATA_STORE: DataStore = {
 
 export const OPERATOR_NAME = "Mateusz Mitek";
 export const OPERATOR_TITLE = "Tata";
-export const SYS_VERSION = "9.0.0-Triada-BestOS-Mission";
+export const SYS_VERSION = "9.5.0-Ollama-Gemini-MCP-Synced";
 
 /**
  * Safely normalizes any raw or nested DataStore object (e.g. { store: { config, update_history, chat_history } })
@@ -353,6 +378,9 @@ export function normalizeDataStore(raw: any): DataStore {
     candidate.config && typeof candidate.config === 'object'
       ? { ...INITIAL_DATA_STORE.config, ...candidate.config }
       : { ...INITIAL_DATA_STORE.config };
+  if (config.sys_version === '9.0.0-Triada-BestOS-Mission') {
+    config.sys_version = SYS_VERSION;
+  }
   for (const legacyModelKey of ['dialogue_engine', 'ai_provider', 'ai_model', 'live_ai_engine']) {
     delete config[legacyModelKey];
   }
